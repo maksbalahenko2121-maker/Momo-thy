@@ -934,7 +934,21 @@ async def ai_chat_handler(message: Message):
 
         await bot.send_chat_action(message.chat.id, "typing")
 
-        comp = await groq_client.chat.completions.create(model="llama-3.1-8b-instant", messages=[{"role": "system", "content": prompt}, {"role": "user", "content": message.text[:500]}], max_tokens=180)
+        models = await groq_client.models.list()
+
+        valid_ids = [m.id for m in models.data if "whisper" not in m.id and "guard" not in m.id and "tts" not in m.id]
+
+        chosen_model = next((m for m in valid_ids if "70b" in m or "llama" in m), valid_ids.pop(0))
+
+        comp = await groq_client.chat.completions.create(
+
+            model=chosen_model,
+
+            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": message.text[:500]}],
+
+            max_tokens=180
+
+        )
 
         await message.reply(comp.choices.pop(0).message.content)
 
