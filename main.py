@@ -32,7 +32,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 # --- КОНФИГУРАЦИЯ ---
 
-BOT_TOKEN = os.getenv("9297074957:AAEURglfdq6H-Cd9pjPWs9mme6pkG3vSLeE")
+BOT_TOKEN = os.getenv("9297074957:AAHgXbP98qptiyJhUQE9Su3rn7yiqUoXb98")
 
 ADMIN_ID = int(os.getenv("6921885296", "0"))
 
