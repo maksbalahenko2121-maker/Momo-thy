@@ -14,6 +14,18 @@ from datetime import datetime
 
 import aiosqlite
 
+import subprocess, sys
+
+try:
+
+    from groq import AsyncGroq
+
+except ImportError:
+
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "groq"])
+
+    from groq import AsyncGroq
+
 from groq import AsyncGroq
 
 from aiogram import Bot, Dispatcher, F
