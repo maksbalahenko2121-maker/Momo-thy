@@ -550,14 +550,23 @@ async def top_players(message: Message):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        top = await (await db.execute("SELECT first_name, balance, affection_lvl FROM users ORDER BY balance DESC LIMIT 10")).fetchall()
+        top = await (await db.execute("SELECT user_id, username, first_name, balance, affection_lvl FROM users ORDER BY balance DESC LIMIT 10")).fetchall()
 
     medals = ["🥇", "🥈", "🥉"]
 
-    lines = [f"{medals[i] if i < 3 else str(i+1)+'.'} <b>{(n or 'Бака').replace('<','')}</b> — <code>{b} BAKA</code> (💕 {l} ур.)" for i, (n, b, l) in enumerate(top)]
+    lines = []
 
-    await message.answer(f"🏆 <b>Топ-10 богачей Момо:</b>\n\n<blockquote>{chr(10).join(lines) or 'Пусто'}</blockquote>", parse_mode="HTML")
+    for i, (uid, uname, fname, bal, lvl) in enumerate(top):
 
+        prefix = medals[i] if i < 3 else f"{i + 1}."
+
+        clean_name = (fname or "Бака").replace("<", "").replace(">", "").replace("&", "")
+
+        link = f"https://t.me{uname}" if uname else f"tg://user?id={uid}"
+
+        lines.append(f'{prefix} <a href="{link}"><b>{clean_name}</b></a> — <code>{bal} BAKA</code> (💕 {lvl} ур.)')
+
+    await message.answer(f"🏆 <b>Топ-10 богачей Момо:</b>\n\n<blockquote>{chr(10).join(lines) or 'Пусто'}</blockquote>", parse_mode="HTML", disable_web_page_preview=True)
  
 
 @dp.message(F.text == "💌 Позвать друзей")
