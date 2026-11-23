@@ -32,11 +32,11 @@ from aiogram.fsm.state import State, StatesGroup
 
 # --- КОНФИГУРАЦИЯ ---
 
-BOT_TOKEN = os.getenv("9297074957:AAHgXbP98qptiyJhUQE9Su3rn7yiqUoXb98")
+BOT_TOKEN = "9297074957:AAHgXbP98qptiyJhUQE9Su3rn7yiqUoXb98"
 
-ADMIN_ID = int(os.getenv("6921885296", "0"))
+ADMIN_ID = "6921885296", "0"
 
-GROQ_API_KEY = os.getenv("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")
+GROQ_API_KEY = "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"
 
 DB_NAME = "momo_database.db"
 
