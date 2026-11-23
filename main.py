@@ -887,6 +887,9 @@ async def adm_broadcast_send(message: Message, state: FSMContext):
     await message.answer(f"✅ Доставлено: <b>{sent}</b>", parse_mode="HTML")
 
  
+chat_memory = {}
+
+ 
 
 @dp.message(F.text)
 
@@ -916,9 +919,7 @@ async def ai_chat_handler(message: Message):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        row = await (await db.execute("SELECT affection_lvl FROM users WHERE user_id = ?", (uid,))).fetchone()
-
-        lvl = list(row).pop(0) if row else 1
+        lvl = val0(await (await db.execute("SELECT affection_lvl FROM users WHERE user_id = ?", (uid,))).fetchone(), 1)
 
     if now - chat_xp_cooldown.get(uid, 0) > 180 and lvl < 100:
 
@@ -926,9 +927,35 @@ async def ai_chat_handler(message: Message):
 
         lvl, _, _ = await add_affection_xp(uid, 5)
 
-    mood = "грубая ворчливая цундере" if lvl <= 30 else ("смущающаяся цундере" if lvl <= 80 else "влюбленная застенчивая цундере")
+ 
 
-    prompt = f"Ты Цундере Момо, аниме-девушка. Симпатия: {lvl}/100 ур. ({mood}). Отвечай по-русски, коротко (1-2 предложения), эмоционально."
+    is_creator = (uid == ADMIN_ID)
+
+    if is_creator:
+
+        role_info = "С тобой говорит твой Создатель и Хозяин! Ты знаешь, что именно он написал твой код и создал тебя. Веди себя как цундере: снаружи ворчи и делай вид, что не обязана отчитываться, но в глубине души безмерно уважаешь его, слушаешься и боишься огорчить."
+
+    else:
+
+        mood = "грубая ворчливая цундере" if lvl <= 30 else ("смущающаяся цундере" if lvl <= 80 else "влюбленная застенчивая цундере")
+
+        role_info = f"Уровень вашей симпатии: {lvl}/100 ур. ({mood})."
+
+ 
+
+    prompt = f"Ты Цундере Момо, аниме-девушка. {role_info} Помни контекст разговора. Отвечай по-русски, коротко (1-3 предложения), эмоционально."
+
+ 
+
+    mem_key = f"{message.chat.id}_{uid}"
+
+    history = chat_memory.get(mem_key, [])
+
+    history.append({"role": "user", "content": message.text[:500]})
+
+    history = history[-6:]
+
+ 
 
     try:
 
@@ -946,17 +973,23 @@ async def ai_chat_handler(message: Message):
 
             model=chosen_model,
 
-            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": message.text[:500]}],
+            messages=[{"role": "system", "content": prompt}] + history,
 
-            max_tokens=180
+            max_tokens=200
 
         )
 
-        await message.reply(comp.choices.pop(0).message.content)
+        reply_text = comp.choices.pop(0).message.content
+
+        history.append({"role": "assistant", "content": reply_text})
+
+        chat_memory[mem_key] = history[-6:]
+
+        await message.reply(reply_text)
 
     except Exception as e:
 
-        if is_priv and uid == ADMIN_ID: await message.answer(f"⚠️ Ошибка ИИ Groq: <code>{e}</code>", parse_mode="HTML")
+        if is_priv and is_creator: await message.answer(f"⚠️ Ошибка ИИ Groq: <code>{e}</code>", parse_mode="HTML")
 
  
 
