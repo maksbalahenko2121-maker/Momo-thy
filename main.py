@@ -6,7 +6,11 @@ import time
 
 import random
 
+import shutil
+
 import logging
+
+from datetime import datetime
 
 import aiosqlite
 
@@ -38,17 +42,33 @@ ADMIN_ID = 6921885296  # <-- ВПИШИ СЮДА ВСЕ ЦИФРЫ СВОЕГО 
 
 GROQ_API_KEY = "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"
 
-DB_NAME = "momo_database.db"
+ 
+
+# Постоянное хранилище Bothost (/app/data), чтобы база не пропадала при обновлениях
+
+DATA_DIR = os.getenv("DATA_DIR", "/app/data")
+
+if not os.path.exists(DATA_DIR):
+
+    try:
+
+        os.makedirs(DATA_DIR, exist_ok=True)
+
+    except Exception:
+
+        DATA_DIR = "."
+
+DB_NAME = os.path.join(DATA_DIR, "momo_database.db")
 
  
 
 # --- КАРТИНКИ МОМО (file_id) ---
 
-PHOTO_ANGRY = "AgACAgIAAxkBAAKgy2sDlBkS44k46CTYNhZITcHje09gAAILHWsbVAEgSLzZ6nmSWbItAQADAgADeQADPQQ"
+PHOTO_ANGRY = "AgACAgIAAxkBAAKhBmsDmSnWaGVkGdUe9mjAIa52FH89AAINHWsbVAEgSNRj-CUMv7u5AQADAgADeQADPQQ"
 
 PHOTO_SHY = "AgACAgIAAxkBAAKgyWsDlBJhJZadRThIyR-G1GsrVGtxAAIKHWsbVAEgSMKrd1cCVVXkAQADAgADeQADPQQ"
 
-PHOTO_LOVE = "AgACAgIAAxkBAAKgyWsDlBJhJZadRThIyR-G1GsrVGtxAAIKHWsbVAEgSMKrd1cCVVXkAQADAgADeQADPQQ"
+PHOTO_LOVE = "AgACAgIAAxkBAAKgy2sDlBkS44k46CTYNhZITcHje09gAAILHWsbVAEgSLzZ6nmSWbItAQADAgADeQADPQQ"
 
  
 
@@ -68,6 +88,78 @@ chat_xp_cooldown = {}
 
  
 
+MOMO_TIPS = [
+
+    "Болтай со мной в ЛС или позови по имени в чате — за живое общение капает опыт симпатии!",
+
+    "Каждые 10 уровней комиссия на вывод падает, а на 86+ уровне она становится 0%!",
+
+    "Не забывай нажимать «☀️ Поздороваться» раз в сутки, иначе я решу, что ты про меня забыл, бака!",
+
+    "Каждые 3 часа меня можно погладить — только не вздумай растрепать мне волосы!",
+
+    "За каждого приглашенного друга ты получишь +30 BAKA и сразу +25 XP к нашим отношениям.",
+
+    "Добавь меня в общий чат с друзьями — я буду отвечать всем, кто напишет «Момо»!",
+
+    "На каждом новом уровне симпатии открывается уникальная фича в твоем профиле!",
+
+    "Вывод звезд доступен прямо с 1 уровня, как только накопишь 1000 BAKA (50 ⭐)."
+
+]
+
+ 
+
+# Уникальные фичи для каждого из 100 уровней
+
+LEVEL_FEATURES = {
+
+    1: "Право находиться в одном чате с Момо",
+
+    5: "Момо запомнила твой ник (почти)",
+
+    10: "Снижение комиссии до 9% + статус «Терпимый»",
+
+    15: "Разрешение здороваться первым",
+
+    20: "Снижение комиссии до 8% + иммунитет к ворчанию",
+
+    25: "Момо тайно проверяет твой профиль раз в день",
+
+    30: "Снижение комиссии до 7% + доступ к мягким ответам",
+
+    40: "Снижение комиссии до 6% + статус «Почти друг»",
+
+    50: "Снижение комиссии до 5% + личный дегустатор бенто 🍱",
+
+    60: "Снижение комиссии до 4% + Момо краснеет при встрече",
+
+    70: "Снижение комиссии до 3% + статус «Особенный бака»",
+
+    80: "Снижение комиссии до 2% + право на комплименты",
+
+    86: "Комиссия на вывод 0% навсегда! 💎",
+
+    95: "Момо почти готова признаться в чувствах...",
+
+    100: "Абсолютный максимум: Сердце Цундере Момо 💖"
+
+}
+
+ 
+
+def get_level_feature(lvl: int) -> str:
+
+    if lvl in LEVEL_FEATURES:
+
+        return LEVEL_FEATURES[lvl]
+
+    verbs = ["Тайный взгляд", "Скрытая симпатия", "Мягкий тон", "Теплая улыбка", "Доверие Момо", "Особый знак", "Забота цундере", "Ночной чат", "Личный секрет", "Искры в глазах"]
+
+    return f"{verbs[lvl % 10]} (Ступень #{lvl})"
+
+ 
+
 class BotStates(StatesGroup):
 
     waiting_promo = State()
@@ -80,15 +172,17 @@ class BotStates(StatesGroup):
 
     admin_set_sub = State()
 
-    admin_upload_db = State()
-
- 
-
 async def init_db():
+
+    now_ts = int(time.time())
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        await db.execute("""
+        await db.execute("PRAGMA journal_mode=WAL;")
+
+        await db.execute("PRAGMA synchronous=FULL;")
+
+        await db.execute(f"""
 
             CREATE TABLE IF NOT EXISTS users (
 
@@ -110,13 +204,23 @@ async def init_db():
 
                 last_daily INTEGER DEFAULT 0,
 
-                last_pet INTEGER DEFAULT 0
+                last_pet INTEGER DEFAULT 0,
+
+                joined_at INTEGER DEFAULT {now_ts}
 
             )
 
         """)
 
-        for col, definition in [("affection_lvl", "INTEGER DEFAULT 1"), ("affection_xp", "INTEGER DEFAULT 0")]:
+        for col, definition in [
+
+            ("affection_lvl", "INTEGER DEFAULT 1"),
+
+            ("affection_xp", "INTEGER DEFAULT 0"),
+
+            ("joined_at", f"INTEGER DEFAULT {now_ts}")
+
+        ]:
 
             try:
 
@@ -132,7 +236,7 @@ async def init_db():
 
         await db.execute("CREATE TABLE IF NOT EXISTS used_promos (user_id INTEGER, code TEXT)")
 
-        await db.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+        await db.execute("CREATE TABLE IF NOT EXISTS settings (key PRIMARY KEY, value TEXT)")
 
         await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('sub_enabled', '0')")
 
@@ -150,7 +254,7 @@ async def get_setting(key: str):
 
             row = await cursor.fetchone()
 
-            return row[0] if row else None
+            return row if row else None
 
  
 
@@ -166,6 +270,8 @@ async def set_setting(key: str, value: str):
 
 async def ensure_user(user):
 
+    now_ts = int(time.time())
+
     async with aiosqlite.connect(DB_NAME) as db:
 
         async with db.execute("SELECT user_id FROM users WHERE user_id = ?", (user.id,)) as cur:
@@ -174,9 +280,9 @@ async def ensure_user(user):
 
                 await db.execute(
 
-                    "INSERT INTO users (user_id, username, first_name, balance, affection_lvl, affection_xp) VALUES (?, ?, ?, 0, 1, 0)",
+                    "INSERT INTO users (user_id, username, first_name, balance, affection_lvl, affection_xp, joined_at) VALUES (?, ?, ?, 0, 1, 0, ?)",
 
-                    (user.id, user.username or "", user.first_name or "Бака")
+                    (user.id, user.username or "", user.first_name or "Бака", now_ts)
 
                 )
 
@@ -230,21 +336,41 @@ async def add_affection_xp(user_id: int, xp_amount: int) -> tuple[int, int, bool
 
 def get_rank_and_fee(lvl: int) -> tuple[str, float, str]:
 
-    if lvl <= 20:
+    if lvl < 10:
 
         return "Враг №1 💢", 0.10, PHOTO_ANGRY
 
-    elif lvl <= 40:
+    elif lvl < 20:
 
-        return "Знакомый бака 😐", 0.08, PHOTO_ANGRY
+        return "Терпимый бака 😒", 0.09, PHOTO_ANGRY
 
-    elif lvl <= 60:
+    elif lvl < 30:
 
-        return "Почти друг 😳", 0.05, PHOTO_SHY
+        return "Знакомый 😐", 0.08, PHOTO_ANGRY
 
-    elif lvl <= 85:
+    elif lvl < 40:
 
-        return "Тайный краш 💕", 0.02, PHOTO_SHY
+        return "Собеседник 🙂", 0.07, PHOTO_ANGRY
+
+    elif lvl < 50:
+
+        return "Почти друг 😳", 0.06, PHOTO_SHY
+
+    elif lvl < 60:
+
+        return "Близкий друг 😊", 0.05, PHOTO_SHY
+
+    elif lvl < 70:
+
+        return "Тайный краш 💕", 0.04, PHOTO_SHY
+
+    elif lvl < 80:
+
+        return "Особый человек 💓", 0.03, PHOTO_SHY
+
+    elif lvl < 86:
+
+        return "Почти любимый 💗", 0.02, PHOTO_SHY
 
     else:
 
@@ -264,15 +390,7 @@ def make_hearts_bar(current: int, target: int, length: int = 6) -> str:
 
  
 
-def make_stars_bar(current: int, target: int, length: int = 10) -> str:
-
-    filled = int(round(length * min(max(current / target, 0.0), 1.0)))
-
-    return "⭐" * filled + "☆" * (length - filled)
-
- 
-
-def main_menu(user_id: int):
+def main_menu():
 
     buttons = [
 
@@ -283,10 +401,6 @@ def main_menu(user_id: int):
         [KeyboardButton(text="🏆 Топ игроков")]
 
     ]
-
-    if user_id == ADMIN_ID:
-
-        buttons.append([KeyboardButton(text="👑 Админ-панель")])
 
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
@@ -320,11 +434,63 @@ def admin_menu():
 
         [InlineKeyboardButton(text="🔒 Обязательная подписка", callback_data="adm_sub")],
 
-        [InlineKeyboardButton(text="💾 Скачать базу (Бэкап)", callback_data="adm_backup")],
-
-        [InlineKeyboardButton(text="📥 Загрузить базу", callback_data="adm_restore")]
+        [InlineKeyboardButton(text="💾 Скачать базу (Бэкап)", callback_data="adm_backup")]
 
     ])
+
+ 
+
+# --- АВТОМАТИЧЕСКОЕ ВОССТАНОВЛЕНИЕ БАЗЫ ПРИ ОТПРАВКЕ ФАЙЛА .DB АДМИНОМ ---
+
+@dp.message(F.document)
+
+async def auto_restore_db(message: Message):
+
+    if message.from_user.id != ADMIN_ID or message.chat.type != "private":
+
+        return
+
+    if not message.document.file_name or not message.document.file_name.endswith(".db"):
+
+        return
+
+    try:
+
+        if os.path.exists(DB_NAME):
+
+            shutil.copy2(DB_NAME, DB_NAME + ".bak")
+
+        file = await bot.get_file(message.document.file_id)
+
+        await bot.download_file(file.file_path, DB_NAME)
+
+        await init_db()
+
+        async with aiosqlite.connect(DB_NAME) as db:
+
+            u_cnt = (await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())
+
+            t_baka = (await (await db.execute("SELECT SUM(balance) FROM users")).fetchone()) or 0
+
+        await message.reply(
+
+            f"✅ <b>База данных мгновенно восстановлена!</b>\n"
+
+            f"👤 Игроков в базе: <b>{u_cnt}</b>\n"
+
+            f"💰 Общий баланс: <code>{t_baka} BAKA</code>",
+
+            parse_mode="HTML"
+
+        )
+
+    except Exception as e:
+
+        if os.path.exists(DB_NAME + ".bak"):
+
+            shutil.copy2(DB_NAME + ".bak", DB_NAME)
+
+        await message.reply(f"❌ Ошибка восстановления (откатила старую базу): <code>{e}</code>", parse_mode="HTML")
 
  
 
@@ -384,7 +550,9 @@ async def cmd_start(message: Message):
 
     args = message.text.split()
 
-    ref_id = int(args[1]) if len(args) > 1 and args[1].isdigit() and int(args[1]) != user.id else None
+    ref_id = int(args) if len(args) > 1 and args.isdigit() and int(args) != user.id else None
+
+    now_ts = int(time.time())
 
  
 
@@ -398,9 +566,9 @@ async def cmd_start(message: Message):
 
             await db.execute(
 
-                "INSERT INTO users (user_id, username, first_name, balance, affection_lvl, affection_xp, referrer_id) VALUES (?, ?, ?, 0, 1, 0, ?)",
+                "INSERT INTO users (user_id, username, first_name, balance, affection_lvl, affection_xp, referrer_id, joined_at) VALUES (?, ?, ?, 0, 1, 0, ?, ?)",
 
-                (user.id, user.username or "", user.first_name or "Бака", ref_id)
+                (user.id, user.username or "", user.first_name or "Бака", ref_id, now_ts)
 
             )
 
@@ -414,7 +582,7 @@ async def cmd_start(message: Message):
 
                     await db2.commit()
 
-                lvl, _, up = await add_affection_xp(ref_id, 25)
+                await add_affection_xp(ref_id, 25)
 
                 try:
 
@@ -434,7 +602,7 @@ async def cmd_start(message: Message):
 
         "<blockquote>💬 Болтай со мной в чате (я ИИ!)\n"
 
-        "💕 Качай 100 уровней симпатии (комиссия падает с 10% до 0%)\n"
+        "💕 Качай 100 уровней симпатии (на каждом уровне — своя фича!)\n"
 
         "⭐ Выводи звезды с 1 уровня от 1000 BAKA (50 ⭐)</blockquote>"
 
@@ -442,31 +610,43 @@ async def cmd_start(message: Message):
 
     if PHOTO_ANGRY:
 
-        await message.answer_photo(PHOTO_ANGRY, caption=welcome_text, reply_markup=main_menu(user.id), parse_mode="HTML")
+        await message.answer_photo(PHOTO_ANGRY, caption=welcome_text, reply_markup=main_menu(), parse_mode="HTML")
 
     else:
 
-        await message.answer(welcome_text, reply_markup=main_menu(user.id), parse_mode="HTML")
+        await message.answer(welcome_text, reply_markup=main_menu(), parse_mode="HTML")
 
  
 
 async def build_profile_card(user_id: int) -> tuple[str, str]:
 
+    now_ts = int(time.time())
+
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT balance, affection_lvl, affection_xp, referrals_count FROM users WHERE user_id = ?", (user_id,)) as cur:
+        async with db.execute("SELECT balance, affection_lvl, affection_xp, referrals_count, joined_at FROM users WHERE user_id = ?", (user_id,)) as cur:
 
             row = await cur.fetchone()
 
-            bal, lvl, xp, refs = row if row else (0, 1, 0, 0)
+            bal, lvl, xp, refs, joined_at = row if row else (0, 1, 0, 0, now_ts)
 
         async with db.execute("SELECT COUNT(*) FROM users WHERE balance > ?", (bal,)) as cur:
 
-            rank_pos = (await cur.fetchone())[0] + 1
+            rank_pos = (await cur.fetchone()) + 1
 
         async with db.execute("SELECT COUNT(*) FROM users") as cur:
 
-            total_users = (await cur.fetchone())[0]
+            total_users = (await cur.fetchone())
+
+ 
+
+    if not joined_at:
+
+        joined_at = now_ts
+
+    days_known = max(1, (now_ts - joined_at) // 86400 + 1)
+
+    date_str = datetime.fromtimestamp(joined_at).strftime("%d.%m.%Y")
 
  
 
@@ -478,7 +658,11 @@ async def build_profile_card(user_id: int) -> tuple[str, str]:
 
     hearts = make_hearts_bar(xp, req_xp) if lvl < 100 else "❤️❤️❤️❤️❤️❤️"
 
-    stars_bar = make_stars_bar(bal, 1000)
+    xp_line = f"{hearts} ({xp}/{req_xp} XP)" if lvl < 100 else f"{hearts} (MAX)"
+
+    lvl_perk = get_level_feature(lvl)
+
+    tip = random.choice(MOMO_TIPS)
 
  
 
@@ -498,13 +682,13 @@ async def build_profile_card(user_id: int) -> tuple[str, str]:
 
         f"</blockquote>\n\n"
 
-        f"💓 <b>До {min(100, lvl + 1)} уровня симпатии:</b>\n"
+        f"✨ <b>Фича {lvl} уровня:</b> <i>{lvl_perk}</i>\n"
 
-        f"{hearts} ({xp}/{req_xp} XP)\n\n"
+        f"💓 <b>До {min(100, lvl + 1)} ур.:</b> {xp_line}\n\n"
 
-        f"✨ <b>Прогресс до вывода (50 ⭐):</b>\n"
+        f"📅 <b>Первое знакомство:</b> {days_known} дн. вместе (с {date_str})\n"
 
-        f"{stars_bar} ({bal}/1000)"
+        f"💡 <i>Подсказка: {tip}</i>"
 
     )
 
@@ -566,9 +750,7 @@ async def cb_daily(call: CallbackQuery):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT last_daily FROM users WHERE user_id = ?", (user_id,)) as cur:
-
-            last_daily = (await cur.fetchone())[0]
+        last_daily = (await (await db.execute("SELECT last_daily FROM users WHERE user_id = ?", (user_id,))).fetchone())
 
         if now - last_daily < 86400:
 
@@ -602,9 +784,7 @@ async def cb_pet(call: CallbackQuery):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT last_pet FROM users WHERE user_id = ?", (user_id,)) as cur:
-
-            last_pet = (await cur.fetchone())[0]
+        last_pet = (await (await db.execute("SELECT last_pet FROM users WHERE user_id = ?", (user_id,))).fetchone())
 
         if now - last_pet < 10800:
 
@@ -640,9 +820,7 @@ async def top_players(message: Message):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT first_name, balance, affection_lvl FROM users ORDER BY balance DESC LIMIT 10") as cur:
-
-            top_bal = await cur.fetchall()
+        top_bal = await (await db.execute("SELECT first_name, balance, affection_lvl FROM users ORDER BY balance DESC LIMIT 10")).fetchall()
 
     medals = ["🥇", "🥈", "🥉"]
 
@@ -700,7 +878,7 @@ async def promo_process(message: Message, state: FSMContext):
 
         promo = await (await db.execute("SELECT reward, uses_left FROM promos WHERE code = ?", (code,))).fetchone()
 
-        if not promo or promo[1] <= 0:
+        if not promo or promo <= 0:
 
             await message.answer("Неверный код или закончились активации!")
 
@@ -710,11 +888,11 @@ async def promo_process(message: Message, state: FSMContext):
 
             await db.execute("INSERT INTO used_promos (user_id, code) VALUES (?, ?)", (user_id, code))
 
-            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (promo[0], user_id))
+            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (promo, user_id))
 
             await db.commit()
 
-            await message.answer(f"Начислила <b>{promo[0]} BAKA</b>! 🌸", parse_mode="HTML")
+            await message.answer(f"Начислила <b>{promo} BAKA</b>! 🌸", parse_mode="HTML")
 
     await state.clear()
 
@@ -862,23 +1040,19 @@ async def withdraw_process(message: Message, state: FSMContext):
 
  
 
-# --- АДМИНКА (ПО КНОПКЕ И ПО КОМАНДЕ /admin) ---
+# --- СКРЫТАЯ АДМИНКА (/admin) ---
 
 @dp.message(Command("admin"))
-
-@dp.message(F.text == "👑 Админ-панель")
 
 async def open_admin(message: Message):
 
     if message.from_user.id != ADMIN_ID:
 
-        await message.answer(f"⛔ Доступ запрещен. Твой ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
+        await message.answer(f"⛔ Нет доступа. Твой ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
 
         return
 
-    await message.answer("👑 <b>Админ-панель Момо:</b>", reply_markup=admin_menu(), parse_mode="HTML")
-
- 
+    await message.answer("👑 <b>Админ-панель Момо:</b>\n<i>(Чтобы восстановить базу — просто отправь сюда файл .db)</i>", reply_markup=admin_menu(), parse_mode="HTML")
 
 @dp.callback_query(F.data == "adm_stats")
 
@@ -912,39 +1086,9 @@ async def adm_backup(call: CallbackQuery):
 
     if call.from_user.id == ADMIN_ID and os.path.exists(DB_NAME):
 
-        await call.message.answer_document(FSInputFile(DB_NAME), caption="💾 Бэкап базы")
+        await call.message.answer_document(FSInputFile(DB_NAME), caption="💾 Бэкап базы (просто отправь этот файл боту для восстановления)")
 
     await call.answer()
-
- 
-
-@dp.callback_query(F.data == "adm_restore")
-
-async def adm_restore(call: CallbackQuery, state: FSMContext):
-
-    if call.from_user.id == ADMIN_ID:
-
-        await call.message.answer("Отправь файл <code>momo_database.db</code>:", parse_mode="HTML")
-
-        await state.set_state(BotStates.admin_upload_db)
-
-    await call.answer()
-
- 
-
-@dp.message(BotStates.admin_upload_db, F.document)
-
-async def adm_restore_process(message: Message, state: FSMContext):
-
-    if message.from_user.id == ADMIN_ID:
-
-        file = await bot.get_file(message.document.file_id)
-
-        await bot.download_file(file.file_path, DB_NAME)
-
-        await message.answer("✅ База восстановлена!")
-
-    await state.clear()
 
  
 
@@ -1170,7 +1314,7 @@ async def ai_chat_handler(message: Message):
 
         comp = await groq_client.chat.completions.create(
 
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
 
             messages=[{"role": "system", "content": prompt}, {"role": "user", "content": message.text[:500]}],
 
