@@ -936,9 +936,11 @@ async def ai_chat_handler(message: Message):
 
         models = await groq_client.models.list()
 
-        valid_ids = [m.id for m in models.data if "whisper" not in m.id and "guard" not in m.id and "tts" not in m.id]
+        bad = ("whisper", "guard", "tts", "orpheus", "playai", "distil")
 
-        chosen_model = next((m for m in valid_ids if "70b" in m or "llama" in m), valid_ids.pop(0))
+        valid_ids = [m.id for m in models.data if not any(b in m.id.lower() for b in bad)]
+
+        chosen_model = next((m for m in valid_ids if "llama-3.3" in m or "llama-3.1" in m or "llama3" in m or "qwen" in m or "gemma" in m), valid_ids.pop(0))
 
         comp = await groq_client.chat.completions.create(
 
