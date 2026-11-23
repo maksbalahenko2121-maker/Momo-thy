@@ -921,12 +921,6 @@ async def ai_chat_handler(message: Message):
 
         lvl = val0(await (await db.execute("SELECT affection_lvl FROM users WHERE user_id = ?", (uid,))).fetchone(), 1)
 
-    if now - chat_xp_cooldown.get(uid, 0) > 180 and lvl < 100:
-
-        chat_xp_cooldown[uid] = now
-
-        lvl, _, _ = await add_affection_xp(uid, 5)
-
  
 
     is_creator = (uid == ADMIN_ID)
