@@ -1,20 +1,10 @@
-import asyncio
-
-import os
-
-import time
-
-import random
-
-import shutil
-
-import logging
+import asyncio, os, sys, time, random, shutil, logging, subprocess
 
 from datetime import datetime
 
 import aiosqlite
 
-import subprocess, sys
+ 
 
 try:
 
@@ -26,17 +16,11 @@ except ImportError:
 
     from groq import AsyncGroq
 
-from groq import AsyncGroq
+ 
 
 from aiogram import Bot, Dispatcher, F
 
-from aiogram.types import (
-
-    Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton,
-
-    InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-
-)
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 
 from aiogram.filters import CommandStart, Command
 
@@ -50,27 +34,9 @@ from aiogram.fsm.state import State, StatesGroup
 
 BOT_TOKEN = "9297074957:AAHgXbP98qptiyJhUQE9Su3rn7yiqUoXb98"
 
-ADMIN_ID = 6921885296  # <-- ВПИШИ СЮДА ВСЕ ЦИФРЫ СВОЕГО ID ИЗ @userinfobot
+ADMIN_ID = 6921885296  # <-- ВСЕ ЦИФРЫ ТВОЕГО ID ИЗ @userinfobot
 
 GROQ_API_KEY = "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"
-
- 
-
-# Постоянное хранилище Bothost (/app/data), чтобы база не пропадала при обновлениях
-
-DATA_DIR = os.getenv("DATA_DIR", "/app/data")
-
-if not os.path.exists(DATA_DIR):
-
-    try:
-
-        os.makedirs(DATA_DIR, exist_ok=True)
-
-    except Exception:
-
-        DATA_DIR = "."
-
-DB_NAME = os.path.join(DATA_DIR, "momo_database.db")
 
  
 
@@ -84,6 +50,20 @@ PHOTO_LOVE = "AgACAgIAAxkBAAKgy2sDlBkS44k46CTYNhZITcHje09gAAILHWsbVAEgSLzZ6nmSWb
 
  
 
+DATA_DIR = os.getenv("DATA_DIR", "/app/data")
+
+try:
+
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+except Exception:
+
+    DATA_DIR = "."
+
+DB_NAME = os.path.join(DATA_DIR, "momo_database.db")
+
+ 
+
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=BOT_TOKEN)
@@ -92,67 +72,47 @@ dp = Dispatcher()
 
 groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY and "ВСТАВЬ" not in GROQ_API_KEY else None
 
- 
-
-ai_cooldown = {}
-
-chat_xp_cooldown = {}
+ai_cooldown, chat_xp_cooldown = {}, {}
 
  
 
 MOMO_TIPS = [
 
-    "Болтай со мной в ЛС или позови по имени в чате — за живое общение капает опыт симпатии!",
+    "Болтай со мной в ЛС или позови по имени в чате — за общение капает опыт симпатии!",
 
-    "Каждые 10 уровней комиссия на вывод падает, а на 86+ уровне она становится 0%!",
+    "Каждые 10 уровней комиссия на вывод падает, а на 86+ уровне она станет 0%!",
 
-    "Не забывай нажимать «☀️ Поздороваться» раз в сутки, иначе я решу, что ты про меня забыл, бака!",
+    "Нажимай «☀️ Поздороваться» раз в сутки, иначе я решу, что ты про меня забыл, бака!",
 
-    "Каждые 3 часа меня можно погладить — только не вздумай растрепать мне волосы!",
+    "Каждые 3 часа меня можно погладить — только не растрепай мне волосы!",
 
-    "За каждого приглашенного друга ты получишь +30 BAKA и сразу +25 XP к нашим отношениям.",
+    "За каждого приглашенного друга ты получишь +30 BAKA и +25 XP к нашим отношениям.",
 
-    "Добавь меня в общий чат с друзьями — я буду отвечать всем, кто напишет «Момо»!",
+    "Добавь меня в общий чат — я буду отвечать всем, кто напишет «Момо»!",
 
-    "На каждом новом уровне симпатии открывается уникальная фича в твоем профиле!",
+    "На каждом новом уровне симпатии открывается уникальная фича в профиле!",
 
-    "Вывод звезд доступен прямо с 1 уровня, как только накопишь 1000 BAKA (50 ⭐)."
+    "Вывод звезд доступен с 1 уровня от 1000 BAKA (50 ⭐)."
 
 ]
 
  
 
-# Уникальные фичи для каждого из 100 уровней
-
 LEVEL_FEATURES = {
 
-    1: "Право находиться в одном чате с Момо",
+    1: "Право находиться в одном чате с Момо", 5: "Момо запомнила твой ник (почти)",
 
-    5: "Момо запомнила твой ник (почти)",
+    10: "Комиссия 9% + статус «Терпимый»", 15: "Разрешение здороваться первым",
 
-    10: "Снижение комиссии до 9% + статус «Терпимый»",
+    20: "Комиссия 8% + иммунитет к ворчанию", 25: "Момо тайно проверяет твой профиль",
 
-    15: "Разрешение здороваться первым",
+    30: "Комиссия 7% + мягкие ответы", 40: "Комиссия 6% + статус «Почти друг»",
 
-    20: "Снижение комиссии до 8% + иммунитет к ворчанию",
+    50: "Комиссия 5% + дегустатор бенто 🍱", 60: "Комиссия 4% + Момо краснеет",
 
-    25: "Момо тайно проверяет твой профиль раз в день",
+    70: "Комиссия 3% + статус «Особенный бака»", 80: "Комиссия 2% + право на комплименты",
 
-    30: "Снижение комиссии до 7% + доступ к мягким ответам",
-
-    40: "Снижение комиссии до 6% + статус «Почти друг»",
-
-    50: "Снижение комиссии до 5% + личный дегустатор бенто 🍱",
-
-    60: "Снижение комиссии до 4% + Момо краснеет при встрече",
-
-    70: "Снижение комиссии до 3% + статус «Особенный бака»",
-
-    80: "Снижение комиссии до 2% + право на комплименты",
-
-    86: "Комиссия на вывод 0% навсегда! 💎",
-
-    95: "Момо почти готова признаться в чувствах...",
+    86: "Комиссия на вывод 0% навсегда! 💎", 95: "Момо почти готова признаться...",
 
     100: "Абсолютный максимум: Сердце Цундере Момо 💖"
 
@@ -184,6 +144,14 @@ class BotStates(StatesGroup):
 
     admin_set_sub = State()
 
+ 
+
+def val0(row, default=0):
+
+    return row[0] if row and row[0] is not None else default
+
+ 
+
 async def init_db():
 
     now_ts = int(time.time())
@@ -192,55 +160,13 @@ async def init_db():
 
         await db.execute("PRAGMA journal_mode=WAL;")
 
-        await db.execute("PRAGMA synchronous=FULL;")
+        await db.execute(f"CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, balance INTEGER DEFAULT 0, affection_lvl INTEGER DEFAULT 1, affection_xp INTEGER DEFAULT 0, referrer_id INTEGER, referrals_count INTEGER DEFAULT 0, last_daily INTEGER DEFAULT 0, last_pet INTEGER DEFAULT 0, joined_at INTEGER DEFAULT {now_ts})")
 
-        await db.execute(f"""
+        for col, d in [("affection_lvl", "INTEGER DEFAULT 1"), ("affection_xp", "INTEGER DEFAULT 0"), ("joined_at", f"INTEGER DEFAULT {now_ts}")]:
 
-            CREATE TABLE IF NOT EXISTS users (
+            try: await db.execute(f"ALTER TABLE users ADD COLUMN {col} {d}")
 
-                user_id INTEGER PRIMARY KEY,
-
-                username TEXT,
-
-                first_name TEXT,
-
-                balance INTEGER DEFAULT 0,
-
-                affection_lvl INTEGER DEFAULT 1,
-
-                affection_xp INTEGER DEFAULT 0,
-
-                referrer_id INTEGER,
-
-                referrals_count INTEGER DEFAULT 0,
-
-                last_daily INTEGER DEFAULT 0,
-
-                last_pet INTEGER DEFAULT 0,
-
-                joined_at INTEGER DEFAULT {now_ts}
-
-            )
-
-        """)
-
-        for col, definition in [
-
-            ("affection_lvl", "INTEGER DEFAULT 1"),
-
-            ("affection_xp", "INTEGER DEFAULT 0"),
-
-            ("joined_at", f"INTEGER DEFAULT {now_ts}")
-
-        ]:
-
-            try:
-
-                await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
-
-            except Exception:
-
-                pass
+            except Exception: pass
 
         await db.execute("CREATE TABLE IF NOT EXISTS chats (chat_id INTEGER PRIMARY KEY, title TEXT, members_count INTEGER DEFAULT 0)")
 
@@ -250,9 +176,7 @@ async def init_db():
 
         await db.execute("CREATE TABLE IF NOT EXISTS settings (key PRIMARY KEY, value TEXT)")
 
-        await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('sub_enabled', '0')")
-
-        await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('sub_channel', '')")
+        await db.execute("INSERT OR IGNORE INTO settings VALUES ('sub_enabled', '0'), ('sub_channel', '')")
 
         await db.commit()
 
@@ -262,11 +186,7 @@ async def get_setting(key: str):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
-
-            row = await cursor.fetchone()
-
-            return row if row else None
+        return val0(await (await db.execute("SELECT value FROM settings WHERE key = ?", (key,))).fetchone(), None)
 
  
 
@@ -274,7 +194,7 @@ async def set_setting(key: str, value: str):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        await db.execute("REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+        await db.execute("REPLACE INTO settings VALUES (?, ?)", (key, value))
 
         await db.commit()
 
@@ -282,23 +202,13 @@ async def set_setting(key: str, value: str):
 
 async def ensure_user(user):
 
-    now_ts = int(time.time())
-
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT user_id FROM users WHERE user_id = ?", (user.id,)) as cur:
+        if not await (await db.execute("SELECT 1 FROM users WHERE user_id = ?", (user.id,))).fetchone():
 
-            if not await cur.fetchone():
+            await db.execute("INSERT INTO users (user_id, username, first_name, joined_at) VALUES (?, ?, ?, ?)", (user.id, user.username or "", user.first_name or "Бака", int(time.time())))
 
-                await db.execute(
-
-                    "INSERT INTO users (user_id, username, first_name, balance, affection_lvl, affection_xp, joined_at) VALUES (?, ?, ?, 0, 1, 0, ?)",
-
-                    (user.id, user.username or "", user.first_name or "Бака", now_ts)
-
-                )
-
-                await db.commit()
+            await db.commit()
 
  
 
@@ -308,23 +218,19 @@ def xp_needed_for_level(lvl: int) -> int:
 
  
 
-async def add_affection_xp(user_id: int, xp_amount: int) -> tuple[int, int, bool]:
+async def add_affection_xp(user_id: int, xp_amount: int):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT affection_lvl, affection_xp FROM users WHERE user_id = ?", (user_id,)) as cur:
+        row = await (await db.execute("SELECT affection_lvl, affection_xp FROM users WHERE user_id = ?", (user_id,))).fetchone()
 
-            row = await cur.fetchone()
+        lvl, xp = row if row else (1, 0)
 
-            lvl, xp = row if row else (1, 0)
-
-        if lvl >= 100:
-
-            return 100, 0, False
+        if lvl >= 100: return 100, 0, False
 
         xp += xp_amount
 
-        leveled_up = False
+        up = False
 
         while lvl < 100 and xp >= xp_needed_for_level(lvl):
 
@@ -332,71 +238,35 @@ async def add_affection_xp(user_id: int, xp_amount: int) -> tuple[int, int, bool
 
             lvl += 1
 
-            leveled_up = True
+            up = True
 
-        if lvl == 100:
-
-            xp = 0
+        if lvl == 100: xp = 0
 
         await db.execute("UPDATE users SET affection_lvl = ?, affection_xp = ? WHERE user_id = ?", (lvl, xp, user_id))
 
         await db.commit()
 
-        return lvl, xp, leveled_up
+        return lvl, xp, up
 
  
 
-def get_rank_and_fee(lvl: int) -> tuple[str, float, str]:
+def get_rank_and_fee(lvl: int):
 
-    if lvl < 10:
+    ranks = [(10,"Враг №1 💢",0.10,PHOTO_ANGRY),(20,"Терпимый бака 😒",0.09,PHOTO_ANGRY),(30,"Знакомый 😐",0.08,PHOTO_ANGRY),(40,"Собеседник 🙂",0.07,PHOTO_ANGRY),(50,"Почти друг 😳",0.06,PHOTO_SHY),(60,"Близкий друг 😊",0.05,PHOTO_SHY),(70,"Тайный краш 💕",0.04,PHOTO_SHY),(80,"Особый человек 💓",0.03,PHOTO_SHY),(86,"Почти любимый 💗",0.02,PHOTO_SHY)]
 
-        return "Враг №1 💢", 0.10, PHOTO_ANGRY
+    for lim, name, fee, ph in ranks:
 
-    elif lvl < 20:
+        if lvl < lim: return name, fee, ph
 
-        return "Терпимый бака 😒", 0.09, PHOTO_ANGRY
-
-    elif lvl < 30:
-
-        return "Знакомый 😐", 0.08, PHOTO_ANGRY
-
-    elif lvl < 40:
-
-        return "Собеседник 🙂", 0.07, PHOTO_ANGRY
-
-    elif lvl < 50:
-
-        return "Почти друг 😳", 0.06, PHOTO_SHY
-
-    elif lvl < 60:
-
-        return "Близкий друг 😊", 0.05, PHOTO_SHY
-
-    elif lvl < 70:
-
-        return "Тайный краш 💕", 0.04, PHOTO_SHY
-
-    elif lvl < 80:
-
-        return "Особый человек 💓", 0.03, PHOTO_SHY
-
-    elif lvl < 86:
-
-        return "Почти любимый 💗", 0.02, PHOTO_SHY
-
-    else:
-
-        return "Любимчик Момо 💖", 0.00, PHOTO_LOVE
+    return "Любимчик Момо 💖", 0.00, PHOTO_LOVE
 
  
 
-def make_hearts_bar(current: int, target: int, length: int = 6) -> str:
+def make_hearts_bar(cur: int, trg: int, length: int = 6) -> str:
 
-    if target <= 0:
+    if trg <= 0: return "❤️" * length
 
-        return "❤️" * length
-
-    filled = int(round(length * min(max(current / target, 0.0), 1.0)))
+    filled = int(round(length * min(max(cur / trg, 0.0), 1.0)))
 
     return "❤️" * filled + "🖤" * (length - filled)
 
@@ -404,73 +274,31 @@ def make_hearts_bar(current: int, target: int, length: int = 6) -> str:
 
 def main_menu():
 
-    buttons = [
-
-        [KeyboardButton(text="🎀 Профиль и Стата"), KeyboardButton(text="🎁 Промокод")],
-
-        [KeyboardButton(text="💌 Позвать друзей"), KeyboardButton(text="⭐ Вывод звезд")],
-
-        [KeyboardButton(text="🏆 Топ игроков")]
-
-    ]
-
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🎀 Профиль и Стата"), KeyboardButton(text="🎁 Промокод")],[KeyboardButton(text="💌 Позвать друзей"), KeyboardButton(text="⭐ Вывод звезд")],[KeyboardButton(text="🏆 Топ игроков")]], resize_keyboard=True)
 
  
 
 def profile_inline_kb():
 
-    return InlineKeyboardMarkup(inline_keyboard=[
-
-        [InlineKeyboardButton(text="☀️ Поздороваться", callback_data="act_daily"),
-
-         InlineKeyboardButton(text="✨ Погладить", callback_data="act_pet")],
-
-        [InlineKeyboardButton(text="🔄 Обновить стату", callback_data="act_refresh"),
-
-         InlineKeyboardButton(text="⭐ Вывести", callback_data="act_withdraw")]
-
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="☀️ Поздороваться", callback_data="act_daily"), InlineKeyboardButton(text="✨ Погладить", callback_data="act_pet")],[InlineKeyboardButton(text="🔄 Обновить стату", callback_data="act_refresh"), InlineKeyboardButton(text="⭐ Вывести", callback_data="act_withdraw")]])
 
  
 
 def admin_menu():
 
-    return InlineKeyboardMarkup(inline_keyboard=[
-
-        [InlineKeyboardButton(text="📊 Пульс проекта (Статистика)", callback_data="adm_stats")],
-
-        [InlineKeyboardButton(text="📢 Рассылка (ЛС + Чаты)", callback_data="adm_broadcast")],
-
-        [InlineKeyboardButton(text="🎟 Создать промокод", callback_data="adm_promo")],
-
-        [InlineKeyboardButton(text="🔒 Обязательная подписка", callback_data="adm_sub")],
-
-        [InlineKeyboardButton(text="💾 Скачать базу (Бэкап)", callback_data="adm_backup")]
-
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📊 Пульс проекта", callback_data="adm_stats")],[InlineKeyboardButton(text="📢 Рассылка", callback_data="adm_broadcast")],[InlineKeyboardButton(text="🎟 Промокод", callback_data="adm_promo")],[InlineKeyboardButton(text="🔒 ОП подписка", callback_data="adm_sub")],[InlineKeyboardButton(text="💾 Скачать базу", callback_data="adm_backup")]])
 
  
-
-# --- АВТОМАТИЧЕСКОЕ ВОССТАНОВЛЕНИЕ БАЗЫ ПРИ ОТПРАВКЕ ФАЙЛА .DB АДМИНОМ ---
 
 @dp.message(F.document)
 
 async def auto_restore_db(message: Message):
 
-    if message.from_user.id != ADMIN_ID or message.chat.type != "private":
-
-        return
-
-    if not message.document.file_name or not message.document.file_name.endswith(".db"):
-
-        return
+    if message.from_user.id != ADMIN_ID or message.chat.type != "private" or not message.document.file_name or not message.document.file_name.endswith(".db"): return
 
     try:
 
-        if os.path.exists(DB_NAME):
-
-            shutil.copy2(DB_NAME, DB_NAME + ".bak")
+        if os.path.exists(DB_NAME): shutil.copy2(DB_NAME, DB_NAME + ".bak")
 
         file = await bot.get_file(message.document.file_id)
 
@@ -480,29 +308,17 @@ async def auto_restore_db(message: Message):
 
         async with aiosqlite.connect(DB_NAME) as db:
 
-            u_cnt = (await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())
+            u_cnt = val0(await (await db.execute("SELECT COUNT(*) FROM users")).fetchone(), 0)
 
-            t_baka = (await (await db.execute("SELECT SUM(balance) FROM users")).fetchone()) or 0
+            t_baka = val0(await (await db.execute("SELECT SUM(balance) FROM users")).fetchone(), 0)
 
-        await message.reply(
-
-            f"✅ <b>База данных мгновенно восстановлена!</b>\n"
-
-            f"👤 Игроков в базе: <b>{u_cnt}</b>\n"
-
-            f"💰 Общий баланс: <code>{t_baka} BAKA</code>",
-
-            parse_mode="HTML"
-
-        )
+        await message.reply(f"✅ <b>База восстановлена!</b>\n👤 Игроков: <b>{u_cnt}</b> | 💰 Банк: <code>{t_baka} BAKA</code>", parse_mode="HTML")
 
     except Exception as e:
 
-        if os.path.exists(DB_NAME + ".bak"):
+        if os.path.exists(DB_NAME + ".bak"): shutil.copy2(DB_NAME + ".bak", DB_NAME)
 
-            shutil.copy2(DB_NAME + ".bak", DB_NAME)
-
-        await message.reply(f"❌ Ошибка восстановления (откатила старую базу): <code>{e}</code>", parse_mode="HTML")
+        await message.reply(f"❌ Ошибка: <code>{e}</code>", parse_mode="HTML")
 
  
 
@@ -512,7 +328,9 @@ async def get_photo_id(message: Message):
 
     if message.from_user.id == ADMIN_ID and message.chat.type == "private":
 
-        await message.reply(f"🖼 <b>Код картинки:</b>\n<code>{message.photo[-1].file_id}</code>", parse_mode="HTML")
+        await message.reply(f"🖼 <code>{message.photo[-1].file_id}</code>", parse_mode="HTML")
+
+ 
 
 @dp.my_chat_member()
 
@@ -520,33 +338,23 @@ async def on_chat_member(event):
 
     if event.chat.type in ["group", "supergroup"]:
 
-        if event.new_chat_member.status in ["member", "administrator"]:
+        async with aiosqlite.connect(DB_NAME) as db:
 
-            try:
+            if event.new_chat_member.status in ["member", "administrator"]:
 
-                cnt = await bot.get_chat_member_count(event.chat.id)
+                try: cnt = await bot.get_chat_member_count(event.chat.id)
 
-            except Exception:
+                except Exception: cnt = 0
 
-                cnt = 0
+                await db.execute("REPLACE INTO chats VALUES (?, ?, ?)", (event.chat.id, event.chat.title, cnt))
 
-            async with aiosqlite.connect(DB_NAME) as db:
+                if ADMIN_ID: await bot.send_message(ADMIN_ID, f"🔔 Новый чат: <b>{event.chat.title}</b> ({cnt} чел.)", parse_mode="HTML")
 
-                await db.execute("REPLACE INTO chats (chat_id, title, members_count) VALUES (?, ?, ?)", (event.chat.id, event.chat.title, cnt))
-
-                await db.commit()
-
-            if ADMIN_ID:
-
-                await bot.send_message(ADMIN_ID, f"🔔 <b>Новый чат!</b>\n📌 <b>{event.chat.title}</b> ({cnt} чел.)", parse_mode="HTML")
-
-        elif event.new_chat_member.status in ["left", "kicked"]:
-
-            async with aiosqlite.connect(DB_NAME) as db:
+            elif event.new_chat_member.status in ["left", "kicked"]:
 
                 await db.execute("DELETE FROM chats WHERE chat_id = ?", (event.chat.id,))
 
-                await db.commit()
+            await db.commit()
 
  
 
@@ -554,9 +362,7 @@ async def on_chat_member(event):
 
 async def cmd_start(message: Message):
 
-    if message.chat.type != "private":
-
-        return
+    if message.chat.type != "private": return
 
     user = message.from_user
 
@@ -564,105 +370,51 @@ async def cmd_start(message: Message):
 
     ref_id = int(args) if len(args) > 1 and args.isdigit() and int(args) != user.id else None
 
-    now_ts = int(time.time())
-
- 
-
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT user_id FROM users WHERE user_id = ?", (user.id,)) as cursor:
+        if not await (await db.execute("SELECT 1 FROM users WHERE user_id = ?", (user.id,))).fetchone():
 
-            exists = await cursor.fetchone()
+            await db.execute("INSERT INTO users (user_id, username, first_name, referrer_id, joined_at) VALUES (?, ?, ?, ?, ?)", (user.id, user.username or "", user.first_name or "Бака", ref_id, int(time.time())))
 
-        if not exists:
-
-            await db.execute(
-
-                "INSERT INTO users (user_id, username, first_name, balance, affection_lvl, affection_xp, referrer_id, joined_at) VALUES (?, ?, ?, 0, 1, 0, ?, ?)",
-
-                (user.id, user.username or "", user.first_name or "Бака", ref_id, now_ts)
-
-            )
+            if ref_id: await db.execute("UPDATE users SET balance = balance + 30, referrals_count = referrals_count + 1 WHERE user_id = ?", (ref_id,))
 
             await db.commit()
 
             if ref_id:
 
-                async with aiosqlite.connect(DB_NAME) as db2:
-
-                    await db2.execute("UPDATE users SET balance = balance + 30, referrals_count = referrals_count + 1 WHERE user_id = ?", (ref_id,))
-
-                    await db2.commit()
-
                 await add_affection_xp(ref_id, 25)
 
-                try:
+                try: await bot.send_message(ref_id, "Х-хм! Новый реферал: <b>+30 BAKA</b> и <b>+25 XP</b>!", parse_mode="HTML")
 
-                    await bot.send_message(ref_id, f"Х-хм! Новый реферал: <b>+30 BAKA</b> и <b>+25 XP</b> к симпатии!", parse_mode="HTML")
+                except Exception: pass
 
-                except Exception:
+    txt = "Х-хм! Не думай, что я рада тебя видеть, бака! 🌸\nЯ — <b>Цундере Момо</b>.\n\n<blockquote>💬 Болтай со мной в чате (я ИИ!)\n💕 Качай 100 уровней симпатии\n⭐ Выводи звезды с 1 уровня от 1000 BAKA (50 ⭐)</blockquote>"
 
-                    pass
+    if PHOTO_ANGRY: await message.answer_photo(PHOTO_ANGRY, caption=txt, reply_markup=main_menu(), parse_mode="HTML")
 
- 
-
-    welcome_text = (
-
-        "Х-хм! Не думай, что я рада тебя видеть, бака! 🌸\n"
-
-        "Я — <b>Цундере Момо</b>.\n\n"
-
-        "<blockquote>💬 Болтай со мной в чате (я ИИ!)\n"
-
-        "💕 Качай 100 уровней симпатии (на каждом уровне — своя фича!)\n"
-
-        "⭐ Выводи звезды с 1 уровня от 1000 BAKA (50 ⭐)</blockquote>"
-
-    )
-
-    if PHOTO_ANGRY:
-
-        await message.answer_photo(PHOTO_ANGRY, caption=welcome_text, reply_markup=main_menu(), parse_mode="HTML")
-
-    else:
-
-        await message.answer(welcome_text, reply_markup=main_menu(), parse_mode="HTML")
+    else: await message.answer(txt, reply_markup=main_menu(), parse_mode="HTML")
 
  
 
-async def build_profile_card(user_id: int) -> tuple[str, str]:
+async def build_profile_card(user_id: int):
 
     now_ts = int(time.time())
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        async with db.execute("SELECT balance, affection_lvl, affection_xp, referrals_count, joined_at FROM users WHERE user_id = ?", (user_id,)) as cur:
+        row = await (await db.execute("SELECT balance, affection_lvl, affection_xp, referrals_count, joined_at FROM users WHERE user_id = ?", (user_id,))).fetchone()
 
-            row = await cur.fetchone()
+        bal, lvl, xp, refs, joined_at = row if row else (0, 1, 0, 0, now_ts)
 
-            bal, lvl, xp, refs, joined_at = row if row else (0, 1, 0, 0, now_ts)
+        rank_pos = val0(await (await db.execute("SELECT COUNT(*) FROM users WHERE balance > ?", (bal,))).fetchone(), 0) + 1
 
-        async with db.execute("SELECT COUNT(*) FROM users WHERE balance > ?", (bal,)) as cur:
+        total_users = val0(await (await db.execute("SELECT COUNT(*) FROM users")).fetchone(), 1)
 
-            rank_pos = (await cur.fetchone()) + 1
-
-        async with db.execute("SELECT COUNT(*) FROM users") as cur:
-
-            total_users = (await cur.fetchone())
-
- 
-
-    if not joined_at:
-
-        joined_at = now_ts
+    joined_at = joined_at or now_ts
 
     days_known = max(1, (now_ts - joined_at) // 86400 + 1)
 
     date_str = datetime.fromtimestamp(joined_at).strftime("%d.%m.%Y")
-
- 
-
-    stars = round(bal / 20, 2)
 
     rank_name, fee, photo_id = get_rank_and_fee(lvl)
 
@@ -672,35 +424,25 @@ async def build_profile_card(user_id: int) -> tuple[str, str]:
 
     xp_line = f"{hearts} ({xp}/{req_xp} XP)" if lvl < 100 else f"{hearts} (MAX)"
 
-    lvl_perk = get_level_feature(lvl)
-
-    tip = random.choice(MOMO_TIPS)
-
- 
-
     text = (
 
         f"📊 <b>СТАТИСТИКА ИГРОКА</b>\n"
 
-        f"<blockquote>"
-
-        f"💰 Баланс: <code>{bal} BAKA</code> │ ⭐ <code>{stars}</code>\n"
+        f"<blockquote>💰 Баланс: <code>{bal} BAKA</code> │ ⭐ <code>{round(bal/20, 2)}</code>\n"
 
         f"💕 Симпатия: <code>{lvl}/100 ур.</code> │ 🎖 Ранг: <b>{rank_name}</b>\n"
 
         f"👥 Друзей: <code>{refs}</code> │ 💸 Комиссия: <code>{int(fee*100)}%</code>\n"
 
-        f"🏆 Место в топе: <code>#{rank_pos} из {total_users}</code>"
+        f"🏆 Место в топе: <code>#{rank_pos} из {total_users}</code></blockquote>\n\n"
 
-        f"</blockquote>\n\n"
-
-        f"✨ <b>Фича {lvl} уровня:</b> <i>{lvl_perk}</i>\n"
+        f"✨ <b>Фича {lvl} уровня:</b> <i>{get_level_feature(lvl)}</i>\n"
 
         f"💓 <b>До {min(100, lvl + 1)} ур.:</b> {xp_line}\n\n"
 
         f"📅 <b>Первое знакомство:</b> {days_known} дн. вместе (с {date_str})\n"
 
-        f"💡 <i>Подсказка: {tip}</i>"
+        f"💡 <i>Подсказка: {random.choice(MOMO_TIPS)}</i>"
 
     )
 
@@ -716,13 +458,9 @@ async def profile_msg(message: Message):
 
     text, photo_id = await build_profile_card(message.from_user.id)
 
-    if photo_id:
+    if photo_id: await message.answer_photo(photo_id, caption=text, reply_markup=profile_inline_kb(), parse_mode="HTML")
 
-        await message.answer_photo(photo_id, caption=text, reply_markup=profile_inline_kb(), parse_mode="HTML")
-
-    else:
-
-        await message.answer(text, reply_markup=profile_inline_kb(), parse_mode="HTML")
+    else: await message.answer(text, reply_markup=profile_inline_kb(), parse_mode="HTML")
 
  
 
@@ -734,17 +472,11 @@ async def cb_refresh(call: CallbackQuery):
 
     try:
 
-        if call.message.photo:
+        if call.message.photo: await call.message.edit_caption(caption=text, reply_markup=profile_inline_kb(), parse_mode="HTML")
 
-            await call.message.edit_caption(caption=text, reply_markup=profile_inline_kb(), parse_mode="HTML")
+        else: await call.message.edit_text(text=text, reply_markup=profile_inline_kb(), parse_mode="HTML")
 
-        else:
-
-            await call.message.edit_text(text=text, reply_markup=profile_inline_kb(), parse_mode="HTML")
-
-    except Exception:
-
-        pass
+    except Exception: pass
 
     await call.answer("Обновлено!")
 
@@ -754,29 +486,23 @@ async def cb_refresh(call: CallbackQuery):
 
 async def cb_daily(call: CallbackQuery):
 
-    user_id = call.from_user.id
+    uid, now = call.from_user.id, int(time.time())
 
     await ensure_user(call.from_user)
 
-    now = int(time.time())
-
     async with aiosqlite.connect(DB_NAME) as db:
 
-        last_daily = (await (await db.execute("SELECT last_daily FROM users WHERE user_id = ?", (user_id,))).fetchone())
+        last = val0(await (await db.execute("SELECT last_daily FROM users WHERE user_id = ?", (uid,))).fetchone(), 0)
 
-        if now - last_daily < 86400:
-
-            await call.answer(f"Уже здоровались! Жди {round((86400 - (now - last_daily))/3600, 1)} ч. 💢", show_alert=True)
-
-            return
+        if now - last < 86400: return await call.answer(f"Уже здоровались! Жди {round((86400-(now-last))/3600,1)} ч. 💢", show_alert=True)
 
         bonus = random.randint(5, 15)
 
-        await db.execute("UPDATE users SET last_daily = ?, balance = balance + ? WHERE user_id = ?", (now, bonus, user_id))
+        await db.execute("UPDATE users SET last_daily = ?, balance = balance + ? WHERE user_id = ?", (now, bonus, uid))
 
         await db.commit()
 
-    lvl, _, up = await add_affection_xp(user_id, 15)
+    lvl, _, up = await add_affection_xp(uid, 15)
 
     await call.answer(f"+{bonus} BAKA и +15 XP!" + (f" 🎉 Уровень {lvl}!" if up else ""), show_alert=True)
 
@@ -788,33 +514,25 @@ async def cb_daily(call: CallbackQuery):
 
 async def cb_pet(call: CallbackQuery):
 
-    user_id = call.from_user.id
+    uid, now = call.from_user.id, int(time.time())
 
     await ensure_user(call.from_user)
 
-    now = int(time.time())
-
     async with aiosqlite.connect(DB_NAME) as db:
 
-        last_pet = (await (await db.execute("SELECT last_pet FROM users WHERE user_id = ?", (user_id,))).fetchone())
+        last = val0(await (await db.execute("SELECT last_pet FROM users WHERE user_id = ?", (uid,))).fetchone(), 0)
 
-        if now - last_pet < 10800:
+        if now - last < 10800: return await call.answer(f"Убери руки! Жди {int((10800-(now-last))/60)} мин. 😳", show_alert=True)
 
-            await call.answer(f"Убери руки! Жди {int((10800 - (now - last_pet))/60)} мин. 😳", show_alert=True)
-
-            return
-
-        await db.execute("UPDATE users SET last_pet = ? WHERE user_id = ?", (now, user_id))
+        await db.execute("UPDATE users SET last_pet = ? WHERE user_id = ?", (now, uid))
 
         await db.commit()
 
-    lvl, _, up = await add_affection_xp(user_id, 10)
+    lvl, _, up = await add_affection_xp(uid, 10)
 
     await call.answer("Н-не трогай меня, бака! (+10 XP)" + (f" 🎉 Уровень {lvl}!" if up else ""), show_alert=True)
 
     await cb_refresh(call)
-
- 
 
 @dp.callback_query(F.data == "act_withdraw")
 
@@ -832,11 +550,11 @@ async def top_players(message: Message):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        top_bal = await (await db.execute("SELECT first_name, balance, affection_lvl FROM users ORDER BY balance DESC LIMIT 10")).fetchall()
+        top = await (await db.execute("SELECT first_name, balance, affection_lvl FROM users ORDER BY balance DESC LIMIT 10")).fetchall()
 
     medals = ["🥇", "🥈", "🥉"]
 
-    lines = [f"{medals[i] if i < 3 else str(i+1)+'.'} <b>{(n or 'Бака').replace('<','')}</b> — <code>{b} BAKA</code> (💕 {l} ур.)" for i, (n, b, l) in enumerate(top_bal)]
+    lines = [f"{medals[i] if i < 3 else str(i+1)+'.'} <b>{(n or 'Бака').replace('<','')}</b> — <code>{b} BAKA</code> (💕 {l} ур.)" for i, (n, b, l) in enumerate(top)]
 
     await message.answer(f"🏆 <b>Топ-10 богачей Момо:</b>\n\n<blockquote>{chr(10).join(lines) or 'Пусто'}</blockquote>", parse_mode="HTML")
 
@@ -846,17 +564,9 @@ async def top_players(message: Message):
 
 async def referrals(message: Message):
 
-    bot_info = await bot.get_me()
+    me = await bot.get_me()
 
-    await message.answer(
-
-        f"Зови друзей, бака! 🌸\n<blockquote>∙ <b>+30 BAKA</b> и <b>+25 XP</b> за каждого</blockquote>\n\n"
-
-        f"🔗 Ссылка:\n<code>https://t.me{bot_info.username}?start={message.from_user.id}</code>",
-
-        parse_mode="HTML"
-
-    )
+    await message.answer(f"Зови друзей, бака! 🌸\n<blockquote>∙ <b>+30 BAKA</b> и <b>+25 XP</b> за каждого</blockquote>\n\n🔗 <code>https://t.me{me.username}?start={message.from_user.id}</code>", parse_mode="HTML")
 
  
 
@@ -874,19 +584,15 @@ async def promo_start(message: Message, state: FSMContext):
 
 async def promo_process(message: Message, state: FSMContext):
 
-    code = message.text.strip()
-
-    user_id = message.from_user.id
+    code, uid = message.text.strip(), message.from_user.id
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        if await (await db.execute("SELECT 1 FROM used_promos WHERE user_id = ? AND code = ?", (user_id, code))).fetchone():
-
-            await message.answer("Ты уже вводил этот код! 💢")
+        if await (await db.execute("SELECT 1 FROM used_promos WHERE user_id = ? AND code = ?", (uid, code))).fetchone():
 
             await state.clear()
 
-            return
+            return await message.answer("Ты уже вводил этот код! 💢")
 
         promo = await (await db.execute("SELECT reward, uses_left FROM promos WHERE code = ?", (code,))).fetchone()
 
@@ -898,9 +604,9 @@ async def promo_process(message: Message, state: FSMContext):
 
             await db.execute("UPDATE promos SET uses_left = uses_left - 1 WHERE code = ?", (code,))
 
-            await db.execute("INSERT INTO used_promos (user_id, code) VALUES (?, ?)", (user_id, code))
+            await db.execute("INSERT INTO used_promos VALUES (?, ?)", (uid, code))
 
-            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (promo, user_id))
+            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (promo, uid))
 
             await db.commit()
 
@@ -910,45 +616,29 @@ async def promo_process(message: Message, state: FSMContext):
 
  
 
-async def check_subscription(user_id: int) -> tuple[bool, str]:
+async def check_subscription(user_id: int):
 
-    if await get_setting("sub_enabled") != "1":
+    if await get_setting("sub_enabled") != "1": return True, ""
 
-        return True, ""
+    ch = await get_setting("sub_channel")
 
-    channel = await get_setting("sub_channel")
-
-    if not channel:
-
-        return True, ""
+    if not ch: return True, ""
 
     try:
 
-        m = await bot.get_chat_member(chat_id=channel, user_id=user_id)
+        m = await bot.get_chat_member(chat_id=ch, user_id=user_id)
 
-        return (m.status in ["member", "administrator", "creator"]), channel
+        return (m.status in ["member", "administrator", "creator"]), ch
 
-    except Exception:
-
-        return True, ""
+    except Exception: return True, ""
 
  
 
 async def withdraw_logic(user_id: int, message: Message, state: FSMContext):
 
-    is_sub, channel = await check_subscription(user_id)
+    ok, ch = await check_subscription(user_id)
 
-    if not is_sub:
-
-        await message.answer(
-
-            f"Сначала подпишись на {channel}! 💢",
-
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Я подписался", callback_data="check_sub_again")]])
-
-        )
-
-        return
+    if not ok: return await message.answer(f"Сначала подпишись на {ch}! 💢", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ Я подписался", callback_data="check_sub_again")]]))
 
     async with aiosqlite.connect(DB_NAME) as db:
 
@@ -956,25 +646,11 @@ async def withdraw_logic(user_id: int, message: Message, state: FSMContext):
 
         bal, lvl = row if row else (0, 1)
 
-    if bal < 1000:
-
-        await message.answer(f"У тебя <b>{bal} BAKA</b>. Вывод доступен с 1 уровня от <b>1000 BAKA</b> (50 ⭐)!", parse_mode="HTML")
-
-        return
+    if bal < 1000: return await message.answer(f"У тебя <b>{bal} BAKA</b>. Вывод с 1 уровня от <b>1000 BAKA</b> (50 ⭐)!", parse_mode="HTML")
 
     _, fee, _ = get_rank_and_fee(lvl)
 
-    await message.answer(
-
-        f"⭐ <b>Вывод звезд (доступен с 1 ур.)</b>\n"
-
-        f"Баланс: <b>{bal} BAKA</b> | Твоя комиссия ({lvl} ур.): <b>{int(fee*100)}%</b>\n"
-
-        f"Введи сумму BAKA для обмена (минимум 1000):",
-
-        parse_mode="HTML"
-
-    )
+    await message.answer(f"⭐ <b>Вывод звезд</b>\nБаланс: <b>{bal} BAKA</b> | Комиссия ({lvl} ур.): <b>{int(fee*100)}%</b>\nВведи сумму BAKA (от 1000):", parse_mode="HTML")
 
     await state.set_state(BotStates.waiting_withdraw)
 
@@ -994,17 +670,15 @@ async def withdraw_start(message: Message, state: FSMContext):
 
 async def recheck_sub(call: CallbackQuery, state: FSMContext):
 
-    is_sub, _ = await check_subscription(call.from_user.id)
+    ok, _ = await check_subscription(call.from_user.id)
 
-    if is_sub:
+    if ok:
 
         await call.message.delete()
 
         await withdraw_logic(call.from_user.id, call.message, state)
 
-    else:
-
-        await call.answer("Ты не подписался!", show_alert=True)
+    else: await call.answer("Ты не подписался!", show_alert=True)
 
  
 
@@ -1012,81 +686,65 @@ async def recheck_sub(call: CallbackQuery, state: FSMContext):
 
 async def withdraw_process(message: Message, state: FSMContext):
 
-    if not message.text.isdigit() or int(message.text) < 1000:
+    if not message.text.isdigit() or int(message.text) < 1000: return await message.answer("Введи число от 1000!")
 
-        await message.answer("Введи число от 1000!")
-
-        return
-
-    amount = int(message.text)
-
-    user_id = message.from_user.id
+    amount, uid = int(message.text), message.from_user.id
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        bal, lvl = await (await db.execute("SELECT balance, affection_lvl FROM users WHERE user_id = ?", (user_id,))).fetchone()
+        bal, lvl = await (await db.execute("SELECT balance, affection_lvl FROM users WHERE user_id = ?", (uid,))).fetchone()
 
         if amount > bal:
 
-            await message.answer("Не хватает BAKA!")
-
             await state.clear()
 
-            return
+            return await message.answer("Не хватает BAKA!")
 
         _, fee, _ = get_rank_and_fee(lvl)
 
-        final_stars = round((amount / 20) * (1 - fee), 2)
+        stars = round((amount / 20) * (1 - fee), 2)
 
-        await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, user_id))
+        await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, uid))
 
         await db.commit()
 
-    await message.answer(f"✅ Заявка принята! К выплате: <b>{final_stars} ⭐</b>", parse_mode="HTML")
+    await message.answer(f"✅ Заявка принята! К выплате: <b>{stars} ⭐</b>", parse_mode="HTML")
 
-    if ADMIN_ID:
-
-        await bot.send_message(ADMIN_ID, f"💸 Вывод: @{message.from_user.username} (<code>{user_id}</code>) ➡️ <b>{final_stars} ⭐</b>", parse_mode="HTML")
+    if ADMIN_ID: await bot.send_message(ADMIN_ID, f"💸 Вывод: @{message.from_user.username} (<code>{uid}</code>) ➡️ <b>{stars} ⭐</b>", parse_mode="HTML")
 
     await state.clear()
 
  
 
-# --- СКРЫТАЯ АДМИНКА (/admin) ---
-
 @dp.message(Command("admin"))
 
 async def open_admin(message: Message):
 
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id != ADMIN_ID: return await message.answer(f"⛔ Нет доступа. Твой ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
 
-        await message.answer(f"⛔ Нет доступа. Твой ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
+    await message.answer("👑 <b>Админ-панель Момо:</b>\n<i>(Для восстановления базы просто отправь файл .db сюда)</i>", reply_markup=admin_menu(), parse_mode="HTML")
 
-        return
-
-    await message.answer("👑 <b>Админ-панель Момо:</b>\n<i>(Чтобы восстановить базу — просто отправь сюда файл .db)</i>", reply_markup=admin_menu(), parse_mode="HTML")
+ 
 
 @dp.callback_query(F.data == "adm_stats")
 
 async def adm_stats(call: CallbackQuery):
 
-    if call.from_user.id != ADMIN_ID:
-
-        return
+    if call.from_user.id != ADMIN_ID: return
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        u_cnt = (await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())
+        u = val0(await (await db.execute("SELECT COUNT(*) FROM users")).fetchone(), 0)
 
-        c_cnt = (await (await db.execute("SELECT COUNT(*) FROM chats")).fetchone())
+        c = val0(await (await db.execute("SELECT COUNT(*) FROM chats")).fetchone(), 0)
 
-        t_baka = (await (await db.execute("SELECT SUM(balance) FROM users")).fetchone()) or 0
+        b = val0(await (await db.execute("SELECT SUM(balance) FROM users")).fetchone(), 0)
 
         chats = await (await db.execute("SELECT title, members_count FROM chats ORDER BY members_count DESC LIMIT 10")).fetchall()
 
-    c_list = "\n".join([f"∙ <b>{c}</b> ({c} чел.)" for c in chats]) or "Нет чатов"
+    clist = "\n".join([f"∙ <b>{x}</b> ({x} чел.)" for x in chats]) or "Нет чатов"
 
-    await call.message.answer(f"📊 ЛС: <b>{u_cnt}</b> | Чатов: <b>{c_cnt}</b>\n💰 В банке: <code>{t_baka} BAKA</code>\n\n{c_list}", parse_mode="HTML")
+    await call.message.answer(f"📊 ЛС: <b>{u}</b> | Чатов: <b>{c}</b>\n💰 В банке: <code>{b} BAKA</code>\n\n{clist}", parse_mode="HTML")
 
     await call.answer()
 
@@ -1096,9 +754,7 @@ async def adm_stats(call: CallbackQuery):
 
 async def adm_backup(call: CallbackQuery):
 
-    if call.from_user.id == ADMIN_ID and os.path.exists(DB_NAME):
-
-        await call.message.answer_document(FSInputFile(DB_NAME), caption="💾 Бэкап базы (просто отправь этот файл боту для восстановления)")
+    if call.from_user.id == ADMIN_ID and os.path.exists(DB_NAME): await call.message.answer_document(FSInputFile(DB_NAME), caption="💾 Бэкап базы")
 
     await call.answer()
 
@@ -1134,9 +790,7 @@ async def adm_promo_save(message: Message, state: FSMContext):
 
         await message.answer(f"✅ Код <code>{c}</code> создан!", parse_mode="HTML")
 
-    except Exception:
-
-        await message.answer("❌ Ошибка формата")
+    except Exception: await message.answer("❌ Ошибка формата")
 
     await state.clear()
 
@@ -1146,23 +800,13 @@ async def adm_promo_save(message: Message, state: FSMContext):
 
 async def adm_sub(call: CallbackQuery):
 
-    if call.from_user.id != ADMIN_ID:
-
-        return
+    if call.from_user.id != ADMIN_ID: return
 
     st = "ВКЛ ✅" if await get_setting("sub_enabled") == "1" else "ВЫКЛ ❌"
 
     ch = await get_setting("sub_channel") or "Не задан"
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-
-        [InlineKeyboardButton(text="🔄 Вкл/Выкл", callback_data="toggle_sub")],
-
-        [InlineKeyboardButton(text="✏️ Канал", callback_data="edit_sub_channel")]
-
-    ])
-
-    await call.message.answer(f"🔒 ОП: {st}\nКанал: <code>{ch}</code>", reply_markup=kb, parse_mode="HTML")
+    await call.message.answer(f"🔒 ОП: {st}\nКанал: <code>{ch}</code>", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 Вкл/Выкл", callback_data="toggle_sub")],[InlineKeyboardButton(text="✏️ Канал", callback_data="edit_sub_channel")]]), parse_mode="HTML")
 
     await call.answer()
 
@@ -1224,9 +868,7 @@ async def adm_broadcast_send(message: Message, state: FSMContext):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        targets = set([r for r in await (await db.execute("SELECT user_id FROM users")).fetchall()] +
-
-                      [r for r in await (await db.execute("SELECT chat_id FROM chats")).fetchall()])
+        targets = set([r for r in await (await db.execute("SELECT user_id FROM users")).fetchall()] + [r for r in await (await db.execute("SELECT chat_id FROM chats")).fetchall()])
 
     sent = 0
 
@@ -1240,109 +882,65 @@ async def adm_broadcast_send(message: Message, state: FSMContext):
 
             await asyncio.sleep(0.05)
 
-        except Exception:
-
-            pass
+        except Exception: pass
 
     await message.answer(f"✅ Доставлено: <b>{sent}</b>", parse_mode="HTML")
 
  
 
-# --- ЖИВОЙ ИИ ДИАЛОГ ---
-
 @dp.message(F.text)
 
 async def ai_chat_handler(message: Message):
 
-    if not message.text or message.text.startswith("/"):
-
-        return
+    if not message.text or message.text.startswith("/"): return
 
     if not groq_client:
 
-        if message.chat.type == "private":
-
-            await message.answer("⚠️ Ключ GROQ_API_KEY не вставлен в main.py!")
+        if message.chat.type == "private": await message.answer("⚠️ Ключ GROQ_API_KEY не вставлен в main.py!")
 
         return
 
- 
+    is_priv = message.chat.type == "private"
 
-    is_private = message.chat.type == "private"
+    me = await bot.get_me()
 
-    bot_me = await bot.get_me()
+    if not is_priv and "момо" not in message.text.lower() and f"@{me.username.lower()}" not in message.text.lower() and not (message.reply_to_message and message.reply_to_message.from_user.id == me.id): return
 
-    is_reply = message.reply_to_message and message.reply_to_message.from_user.id == bot_me.id
+    uid, now = message.from_user.id, time.time()
 
-    is_mention = "момо" in message.text.lower() or f"@{bot_me.username.lower()}" in message.text.lower()
+    if now - ai_cooldown.get(uid, 0) < 3: return
 
- 
-
-    if not is_private and not is_mention and not is_reply:
-
-        return
-
- 
-
-    user_id = message.from_user.id
-
-    now = time.time()
-
-    if now - ai_cooldown.get(user_id, 0) < 3:
-
-        return
-
-    ai_cooldown[user_id] = now
-
- 
+    ai_cooldown[uid] = now
 
     await ensure_user(message.from_user)
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        row = await (await db.execute("SELECT affection_lvl FROM users WHERE user_id = ?", (user_id,))).fetchone()
+        row = await (await db.execute("SELECT affection_lvl FROM users WHERE user_id = ?", (uid,))).fetchone()
 
-        lvl = row if row else 1
+        lvl = list(row).pop(0) if row else 1
 
- 
+    if now - chat_xp_cooldown.get(uid, 0) > 180 and lvl < 100:
 
-    if now - chat_xp_cooldown.get(user_id, 0) > 180 and lvl < 100:
+        chat_xp_cooldown[uid] = now
 
-        chat_xp_cooldown[user_id] = now
-
-        lvl, _, _ = await add_affection_xp(user_id, 5)
-
- 
+        lvl, _, _ = await add_affection_xp(uid, 5)
 
     mood = "грубая ворчливая цундере" if lvl <= 30 else ("смущающаяся цундере" if lvl <= 80 else "влюбленная застенчивая цундере")
 
-    prompt = f"Ты Цундере Момо, аниме-девушка. Симпатия к игроку: {lvl}/100 ур. ({mood}). Отвечай по-русски, коротко (1-2 предложения), эмоционально."
-
- 
+    prompt = f"Ты Цундере Момо, аниме-девушка. Симпатия: {lvl}/100 ур. ({mood}). Отвечай по-русски, коротко (1-2 предложения), эмоционально."
 
     try:
 
         await bot.send_chat_action(message.chat.id, "typing")
 
-        comp = await groq_client.chat.completions.create(
+        comp = await groq_client.chat.completions.create(model="llama-3.1-8b-instant", messages=[{"role": "system", "content": prompt}, {"role": "user", "content": message.text[:500]}], max_tokens=180)
 
-            model="llama-3.1-8b-instant",
-
-            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": message.text[:500]}],
-
-            max_tokens=180
-
-        )
-
-        await message.reply(comp.choices.message.content)
+        await message.reply(comp.choices.pop(0).message.content)
 
     except Exception as e:
 
-        logging.error(f"Groq error: {e}")
-
-        if is_private and user_id == ADMIN_ID:
-
-            await message.answer(f"⚠️ Ошибка ИИ Groq: <code>{e}</code>", parse_mode="HTML")
+        if is_priv and uid == ADMIN_ID: await message.answer(f"⚠️ Ошибка ИИ Groq: <code>{e}</code>", parse_mode="HTML")
 
  
 
