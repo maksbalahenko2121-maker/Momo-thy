@@ -10,7 +10,17 @@ from aiogram.fsm.context import FSMContext
 
 from aiogram.fsm.state import State, StatesGroup
 
-from groq import AsyncGroq
+import sys, subprocess
+
+try:
+
+    from groq import AsyncGroq
+
+except ImportError:
+
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "groq"])
+
+    from groq import AsyncGroq
 
 from db import DB_NAME, val0, init_db, get_setting, set_setting, ensure_user, add_affection_xp
 
@@ -20,7 +30,7 @@ router = Router()
 
 ADMIN_ID = int(os.getenv("ADMIN_ID") or "6921885296")
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") or ""
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") or "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"
 
 groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY and "ВСТАВЬ" not in GROQ_API_KEY else None
 
