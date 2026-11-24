@@ -634,19 +634,41 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
         await bot.send_chat_action(message.chat.id, "typing")
 
-        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+        headers = {
 
-        payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": prompt}] + history, "max_tokens": 200, "temperature": 0.9}
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+
+            "Content-Type": "application/json",
+
+            "User-Agent": "Mozilla/5.0"
+
+        }
+
+        payload = {
+
+            "model": "llama-3.3-70b-versatile",
+
+            "messages": [{"role": "system", "content": prompt}] + history,
+
+            "max_tokens": 200,
+
+            "temperature": 0.9
+
+        }
 
         async with aiohttp.ClientSession() as session:
 
             async with session.post("https://groq.com", headers=headers, json=payload) as resp:
 
-                data = await resp.json()
+                text_resp = await resp.text()
 
-                if "choices" not in data:
+                if resp.status != 200:
 
-                    raise Exception(str(data))
+                    raise Exception(f"HTTP {resp.status}: {text_resp[:200]}")
+
+                import json
+
+                data = json.loads(text_resp)
 
                 reply_text = data.get("choices").pop().get("message").get("content")
 
