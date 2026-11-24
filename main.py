@@ -32,7 +32,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 # --- ВСТАВЬ СВОИ ДАННЫЕ СЮДА ---
 
-BOT_TOKEN = "9297074957:AAHgXbP98qptiyJhUQE9Su3rn7yiqUoXb98"
+BOT_TOKEN = "8835996385:AAHXGJfH4TewLUFIDNXrBtdomKT1plizfcg"
 
 ADMIN_ID = 6921885296  # <-- ВСЕ ЦИФРЫ ТВОЕГО ID ИЗ @userinfobot
 
