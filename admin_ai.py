@@ -1,4 +1,6 @@
-import os, time, shutil, asyncio, aiosqlite
+import os, time, shutil, asyncio, aiohttp, aiosqlite
+
+from datetime import datetime
 
 from aiogram import Router, F, Bot
 
@@ -10,19 +12,9 @@ from aiogram.fsm.context import FSMContext
 
 from aiogram.fsm.state import State, StatesGroup
 
-import sys, subprocess
-
-try:
-
-    from groq import AsyncGroq
-
-except ImportError:
-
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "groq"])
-
-    from groq import AsyncGroq
-
 from db import DB_NAME, val0, init_db, get_setting, set_setting, ensure_user, add_affection_xp
+
+from achievements import check_and_grant_achievements
 
  
 
@@ -30,9 +22,7 @@ router = Router()
 
 ADMIN_ID = int(os.getenv("ADMIN_ID") or "6921885296")
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") or "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"
-
-groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY and "ВСТАВЬ" not in GROQ_API_KEY else None
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") or "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"
 
  
 
@@ -56,9 +46,13 @@ def admin_menu():
 
     return InlineKeyboardMarkup(inline_keyboard=[
 
-        [InlineKeyboardButton(text="📊 Детальная статистика", callback_data="adm_stats")],
+        [InlineKeyboardButton(text="📊 Пульс проекта", callback_data="adm_stats"), InlineKeyboardButton(text="🏆 Топ-25 игроков", callback_data="adm_top25")],
 
-        [InlineKeyboardButton(text="✉️ Рассылка в ЛС", callback_data="adm_bcast_pm"), InlineKeyboardButton(text="👥 Рассылка в группы", callback_data="adm_bcast_grp")],
+        [InlineKeyboardButton(text="📜 Логи новичков", callback_data="adm_logs"), InlineKeyboardButton(text="👥 Чаты с ботом", callback_data="adm_chats")],
+
+        [InlineKeyboardButton(text="🎉 Розыгрыш рефов", callback_data="adm_raffle"), InlineKeyboardButton(text="💸 Заявки вывода", callback_data="adm_withdraws")],
+
+        [InlineKeyboardButton(text="✉️ Рассылка ЛС", callback_data="adm_bcast_pm"), InlineKeyboardButton(text="📢 Рассылка Группы", callback_data="adm_bcast_grp")],
 
         [InlineKeyboardButton(text="🎟 Промокод", callback_data="adm_promo"), InlineKeyboardButton(text="🔒 ОП подписка", callback_data="adm_sub")],
 
@@ -80,7 +74,7 @@ async def cmd_setphoto(message: Message):
 
     if mode not in ("angry", "shy", "love"):
 
-        return await message.reply("Укажи тип в подписи:\n`/setphoto angry` — злая\n`/setphoto shy` — смущённая\n`/setphoto love` — влюблённая", parse_mode="Markdown")
+        return await message.reply("Укажи тип фото в подписи:\n`/setphoto angry` — злая\n`/setphoto shy` — смущённая\n`/setphoto love` — влюблённая", parse_mode="Markdown")
 
     await set_setting(f"photo_{mode}", message.photo.pop().file_id)
 
@@ -104,11 +98,11 @@ async def auto_restore_db(message: Message, bot: Bot):
 
         await init_db()
 
-        await message.reply("✅ <b>База успешно восстановлена!</b>", parse_mode="HTML")
+        await message.reply("✅ <b>База данных успешно восстановлена!</b>", parse_mode="HTML")
 
     except Exception as e:
 
-        await message.reply(f"❌ Ошибка: <code>{e}</code>", parse_mode="HTML")
+        await message.reply(f"❌ Ошибка восстановления: <code>{e}</code>", parse_mode="HTML")
 
  
 
@@ -118,7 +112,7 @@ async def open_admin(message: Message):
 
     if message.from_user.id == ADMIN_ID:
 
-        await message.answer("👑 <b>Админ-панель Момо</b>\n∙ Фото: <code>/setphoto angry</code> (shy / love)\n∙ Бэкап: отправь файл <code>.db</code>", reply_markup=admin_menu(), parse_mode="HTML")
+        await message.answer("👑 <b>Админ-панель Цундере Момо</b>\n∙ Фото: <code>/setphoto angry</code> (shy / love)\n∙ Бэкап: отправь файл <code>.db</code> сюда", reply_markup=admin_menu(), parse_mode="HTML")
 
  
 
@@ -148,19 +142,23 @@ async def adm_stats(call: CallbackQuery):
 
         bank = val0(await (await db.execute("SELECT SUM(balance) FROM users")).fetchone(), 0)
 
-        chats = await (await db.execute("SELECT title, members_count FROM chats ORDER BY members_count DESC LIMIT 7")).fetchall()
-
-    clist = "\n".join([f"  ∙ <b>{t}</b> ({cnt} чел.)" for t, cnt in chats]) or "  <i>Нет чатов</i>"
-
     txt = (
 
-        f"📊 <b>ДЕТАЛЬНАЯ СТАТИСТИКА</b>\n\n"
+        f"📊 <b>ПУЛЬС ПРОЕКТА</b>\n\n"
 
-        f"👤 <b>Пользователи (ЛС):</b>\n  ∙ Всего: <b>{u_tot}</b> (+{u_new24} за 24ч)\n  ∙ 🔥 Активны 24ч: <b>{u_24h}</b> | 7д: <b>{u_7d}</b>\n  ∙ 💤 Спящие: <b>{max(0, u_tot - u_7d)}</b>\n  ∙ 🤝 Привели 3+ друзей: <b>{u_refs3}</b>\n\n"
+        f"👤 <b>Пользователи (ЛС):</b>\n"
 
-        f"👥 <b>Группы:</b> <b>{c_tot}</b> (охват ~<b>{c_mem}</b> чел.)\n{clist}\n\n"
+        f"  ∙ Всего: <b>{u_tot}</b> (+{u_new24} за 24ч)\n"
 
-        f"💰 <b>Банк:</b> <code>{bank} BAKA</code> (~{round(bank/20, 1)} ⭐)"
+        f"  ∙ 🔥 Актив 24ч: <b>{u_24h}</b> | 7д: <b>{u_7d}</b>\n"
+
+        f"  ∙ 💤 Спящие: <b>{max(0, u_tot - u_7d)}</b>\n"
+
+        f"  ∙ 🤝 Привели 3+ друзей: <b>{u_refs3}</b>\n\n"
+
+        f"👥 <b>Групповые чаты:</b> <b>{c_tot}</b> (охват ~<b>{c_mem}</b> чел.)\n"
+
+        f"💰 <b>Общий банк:</b> <code>{bank} BAKA</code> (~{round(bank/20, 1)} ⭐)"
 
     )
 
@@ -170,11 +168,239 @@ async def adm_stats(call: CallbackQuery):
 
  
 
+@router.callback_query(F.data == "adm_top25")
+
+async def adm_top25(call: CallbackQuery):
+
+    if call.from_user.id != ADMIN_ID: return
+
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        rows = await (await db.execute("SELECT user_id, username, first_name, balance, affection_lvl, referrals_count FROM users ORDER BY balance DESC LIMIT 25")).fetchall()
+
+    lines = ["🏆 <b>ТОП-25 ИГРОКОВ (Кликабельно):</b>\n"]
+
+    for i, (uid, uname, fname, bal, lvl, refs) in enumerate(rows, 1):
+
+        cname = (fname or "Бака").replace("<", "").replace(">", "")
+
+        link = f"https://t.me{uname}" if uname else f"tg://user?id={uid}"
+
+        lines.append(f'{i}. <a href="{link}"><b>{cname}</b></a> — <code>{bal} BAKA</code> | {lvl} ур. | {refs} реф.')
+
+    await call.message.answer("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
+
+    await call.answer()
+
+ 
+
+@router.callback_query(F.data == "adm_logs")
+
+async def adm_logs(call: CallbackQuery):
+
+    if call.from_user.id != ADMIN_ID: return
+
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        rows = await (await db.execute("SELECT user_id, username, first_name, joined_at, referrer_id FROM users ORDER BY joined_at DESC LIMIT 25")).fetchall()
+
+    lines = ["📜 <b>ЖУРНАЛ ПОСЛЕДНИХ 25 ВХОДОВ:</b>\n"]
+
+    for uid, uname, fname, joined, ref in rows:
+
+        dt = datetime.fromtimestamp(joined or 0).strftime("%d.%m %H:%M")
+
+        cname = (fname or "Бака").replace("<", "").replace(">", "")
+
+        link = f"https://t.me{uname}" if uname else f"tg://user?id={uid}"
+
+        r_str = f" (от <code>{ref}</code>)" if ref else ""
+
+        lines.append(f'🕒 <code>{dt}</code> — <a href="{link}"><b>{cname}</b></a> [<code>{uid}</code>]{r_str}')
+
+    await call.message.answer("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
+
+    await call.answer()
+
+ 
+
+@router.callback_query(F.data == "adm_chats")
+
+async def adm_chats(call: CallbackQuery):
+
+    if call.from_user.id != ADMIN_ID: return
+
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        rows = await (await db.execute("SELECT chat_id, title, members_count, invite_link FROM chats ORDER BY members_count DESC LIMIT 30")).fetchall()
+
+    if not rows: return await call.answer("Бот пока не добавлен ни в один чат.", show_alert=True)
+
+    lines = ["👥 <b>СПИСОК ГРУПП С БОТОМ:</b>\n"]
+
+    for cid, title, cnt, link in rows:
+
+        ctitle = (title or "Чат").replace("<", "").replace(">", "")
+
+        if link:
+
+            lines.append(f'∙ <a href="{link}"><b>{ctitle}</b></a> ({cnt} чел.) — [Перейти]')
+
+        else:
+
+            lines.append(f'∙ <b>{ctitle}</b> ({cnt} чел.) — <i>закрытый без прав админа</i>')
+
+    await call.message.answer("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
+
+    await call.answer()
+
+@router.callback_query(F.data == "adm_raffle")
+
+async def adm_raffle(call: CallbackQuery):
+
+    if call.from_user.id != ADMIN_ID: return
+
+    active = await get_setting("raffle_active") == "1"
+
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        top = await (await db.execute("SELECT user_id, username, first_name, raffle_refs FROM users WHERE raffle_joined = 1 ORDER BY raffle_refs DESC LIMIT 10")).fetchall()
+
+    lines = [f"🎉 <b>РОЗЫГРЫШ РЕФОВОДОВ:</b> {'🟢 АКТИВЕН' if active else '🔴 ОСТАНОВЛЕН'}\n"]
+
+    for i, (uid, uname, fname, r_cnt) in enumerate(top, 1):
+
+        cname = (fname or "Бака").replace("<", "").replace(">", "")
+
+        link = f"https://t.me{uname}" if uname else f"tg://user?id={uid}"
+
+        lines.append(f'{i}. <a href="{link}"><b>{cname}</b></a> — <b>{r_cnt} реф.</b>')
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+
+        [InlineKeyboardButton(text="🔴 Остановить и обнулить" if active else "🟢 Запустить новый розыгрыш", callback_data="toggle_raffle")]
+
+    ])
+
+    await call.message.answer("\n".join(lines), reply_markup=kb, parse_mode="HTML", disable_web_page_preview=True)
+
+    await call.answer()
+
+ 
+
+@router.callback_query(F.data == "toggle_raffle")
+
+async def toggle_raffle(call: CallbackQuery):
+
+    if call.from_user.id != ADMIN_ID: return
+
+    active = await get_setting("raffle_active") == "1"
+
+    if active:
+
+        await set_setting("raffle_active", "0")
+
+        await call.answer("🔴 Розыгрыш остановлен!", show_alert=True)
+
+    else:
+
+        async with aiosqlite.connect(DB_NAME) as db:
+
+            await db.execute("UPDATE users SET raffle_joined = 0, raffle_refs = 0")
+
+            await db.commit()
+
+        await set_setting("raffle_active", "1")
+
+        await call.answer("🟢 Новый розыгрыш запущен! Счётчики обнулены.", show_alert=True)
+
+    await adm_raffle(call)
+
+ 
+
+@router.callback_query(F.data == "adm_withdraws")
+
+async def adm_withdraws(call: CallbackQuery):
+
+    if call.from_user.id != ADMIN_ID: return
+
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        rows = await (await db.execute("SELECT wid, user_id, username, amount_baka, stars FROM withdrawals WHERE status = 'pending' ORDER BY wid ASC LIMIT 10")).fetchall()
+
+    if not rows: return await call.answer("Новых заявок на вывод нет!", show_alert=True)
+
+    for wid, uid, uname, baka, stars in rows:
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+
+            InlineKeyboardButton(text="✅ Выплачено", callback_data=f"wpay_{wid}"),
+
+            InlineKeyboardButton(text="❌ Отклонить (вернуть)", callback_data=f"wrej_{wid}")
+
+        ]])
+
+        await call.message.answer(f"💸 <b>Заявка #{wid}</b>\nИгрок: @{uname} (<code>{uid}</code>)\nСумма: <code>{baka} BAKA</code> ➡️ <b>{stars} ⭐</b>", reply_markup=kb, parse_mode="HTML")
+
+    await call.answer()
+
+ 
+
+@router.callback_query(F.data.startswith(("wpay_", "wrej_")))
+
+async def process_withdraw_decision(call: CallbackQuery, bot: Bot):
+
+    if call.from_user.id != ADMIN_ID: return
+
+    action, wid_s = call.data.split("_", 1)
+
+    wid = int(wid_s)
+
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        row = await (await db.execute("SELECT user_id, amount_baka, stars, status FROM withdrawals WHERE wid = ?", (wid,))).fetchone()
+
+        if not row or row != "pending":
+
+            return await call.answer("Эта заявка уже обработана!", show_alert=True)
+
+        uid, baka, stars, _ = row
+
+        if action == "wpay":
+
+            await db.execute("UPDATE withdrawals SET status = 'paid' WHERE wid = ?", (wid,))
+
+            await db.commit()
+
+            await call.message.edit_text(f"✅ <b>Заявка #{wid} ВЫПЛАЧЕНА!</b> ({stars} ⭐ для <code>{uid}</code>)", parse_mode="HTML")
+
+            try: await bot.send_message(uid, f"🎉 Твоя заявка на вывод <b>{stars} ⭐</b> одобрена и выплачена!", parse_mode="HTML")
+
+            except Exception: pass
+
+        else:
+
+            await db.execute("UPDATE withdrawals SET status = 'rejected' WHERE wid = ?", (wid,))
+
+            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (baka, uid))
+
+            await db.commit()
+
+            await call.message.edit_text(f"❌ <b>Заявка #{wid} ОТКЛОНЕНА.</b> ({baka} BAKA возвращены игроку)", parse_mode="HTML")
+
+            try: await bot.send_message(uid, f"❌ Заявка на вывод отклонена. Твои <b>{baka} BAKA</b> возвращены на баланс.", parse_mode="HTML")
+
+            except Exception: pass
+
+    await call.answer()
+
+ 
+
 @router.callback_query(F.data == "adm_backup")
 
 async def adm_backup(call: CallbackQuery):
 
-    if call.from_user.id == ADMIN_ID and os.path.exists(DB_NAME): await call.message.answer_document(FSInputFile(DB_NAME), caption="💾 Бэкап базы")
+    if call.from_user.id == ADMIN_ID and os.path.exists(DB_NAME): await call.message.answer_document(FSInputFile(DB_NAME), caption="💾 Ручной бэкап базы")
 
     await call.answer()
 
@@ -316,7 +542,7 @@ async def adm_bcast_send(message: Message, state: FSMContext):
 
 async def ai_chat_handler(message: Message, bot: Bot):
 
-    if not message.text or message.text.startswith("/") or not groq_client: return
+    if not message.text or message.text.startswith("/") or not GROQ_API_KEY: return
 
     is_priv = message.chat.type == "private"
 
@@ -326,7 +552,7 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
  
 
-    uid, now = message.from_user.id, time.time()
+    uid, now = message.from_user.id, int(time.time())
 
     if now - ai_cooldown.get(uid, 0) < 3: return
 
@@ -340,9 +566,9 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
     async with aiosqlite.connect(DB_NAME) as db:
 
-        row = await (await db.execute("SELECT affection_lvl, referrals_count, ai_msgs_today, ai_day FROM users WHERE user_id = ?", (uid,))).fetchone()
+        row = await (await db.execute("SELECT affection_lvl, referrals_count, ai_msgs_today, ai_day, yandere_until FROM users WHERE user_id = ?", (uid,))).fetchone()
 
-        lvl, refs, msgs_today, saved_day = row if row else (1, 0, 0, 0)
+        lvl, refs, msgs_today, saved_day, yan_until = row if row else (1, 0, 0, 0, 0)
 
         if saved_day != today: msgs_today = 0
 
@@ -352,19 +578,29 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
             ref_url = f"https://t.me{me.username}?start={uid}"
 
-            return await message.reply(f"*фыркнула* Лимит 15 сообщений на сегодня исчерпан, бака! 💢\nПригласи <b>3 друзей</b> (сейчас <b>{refs}/3</b>), чтобы общаться безлимитно:\n<code>{ref_url}</code>", parse_mode="HTML"
+            return await message.reply(f"*фыркнула* Лимит 15 сообщений на сегодня исчерпан, бака! 💢\nПригласи <b>3 друзей</b> (сейчас <b>{refs}/3</b>), чтобы общаться безлимитно:\n<code>{ref_url}</code>", parse_mode="HTML")
 
-)
+ 
 
-        await db.execute("UPDATE users SET ai_msgs_today = ?, ai_day = ? WHERE user_id = ?", (msgs_today + 1, today, uid))
+        await db.execute("UPDATE users SET ai_msgs_today = ?, ai_day = ?, total_msgs = total_msgs + 1 WHERE user_id = ?", (msgs_today + 1, today, uid))
 
         await db.commit()
 
  
 
-    await add_affection_xp(uid, 3)
+    if not is_priv:
 
-    if uid == ADMIN_ID:
+        await add_affection_xp(uid, 5, is_chat_msg=True)
+
+    await check_and_grant_achievements(uid)
+
+ 
+
+    if yan_until > now:
+
+        role_info = "СЕЙЧАС ТЫ В РЕЖИМЕ БЕЗУМНОЙ ЯНДЕРЕ! Ты одержима игроком, жутко ревнуешь его ко всем, угрожаешь расправой соперникам, говоришь сладко-пугающим тоном с матами ('Ты только мой, сука, никому не отдам, зарежу всех, блять!')."
+
+    elif uid == ADMIN_ID:
 
         role_info = "С тобой говорит твой Создатель! Дерзи и матерись для вида, но в глубине души слушайся и уважай его."
 
@@ -398,9 +634,21 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
         await bot.send_chat_action(message.chat.id, "typing")
 
-        comp = await groq_client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "system", "content": prompt}] + history, max_tokens=200, temperature=0.9)
+        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
-        reply_text = comp.choices.pop().message.content
+        payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": prompt}] + history, "max_tokens": 200, "temperature": 0.9}
+
+        async with aiohttp.ClientSession() as session:
+
+            async with session.post("https://groq.com", headers=headers, json=payload) as resp:
+
+                data = await resp.json()
+
+                if "choices" not in data:
+
+                    raise Exception(str(data))
+
+                reply_text = data.get("choices").pop().get("message").get("content")
 
         history.append({"role": "assistant", "content": reply_text})
 
