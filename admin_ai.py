@@ -24,7 +24,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID") or "6921885296")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or "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"
 
-GROQ_URL = https://groq.com
+GROQ_URL = "https://groq.com"
 
  
 
