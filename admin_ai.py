@@ -1,4 +1,4 @@
-import os, time, shutil, asyncio, aiohttp, aiosqlite
+import os, time, json, shutil, asyncio, aiohttp, aiosqlite
 
 from datetime import datetime
 
@@ -360,11 +360,15 @@ async def process_withdraw_decision(call: CallbackQuery, bot: Bot):
 
         row = await (await db.execute("SELECT user_id, amount_baka, stars, status FROM withdrawals WHERE wid = ?", (wid,))).fetchone()
 
-        if not row or row != "pending":
+        if not row:
+
+            return await call.answer("Заявка не найдена!", show_alert=True)
+
+        uid, baka, stars, status = row
+
+        if status != "pending":
 
             return await call.answer("Эта заявка уже обработана!", show_alert=True)
-
-        uid, baka, stars, _ = row
 
         if action == "wpay":
 
@@ -598,7 +602,7 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
     if yan_until > now:
 
-        role_info = "СЕЙЧАС ТЫ В РЕЖИМЕ БЕЗУМНОЙ ЯНДЕРЕ! Ты одержима игроком, жутко ревнуешь его ко всем, угрожаешь расправой соперникам, говоришь сладко-пугающим тоном с матами ('Ты только мой, сука, никому не отдам, зарежу всех, блять!')."
+        role_info = "СЕЙЧАС ТЫ В РЕЖИМЕ БЕЗУМНОЙ ЯНДЕРЕ! Ты одержима игроком, жутко ревнуешь его ко всем, угрожаешь соперникам, говоришь сладко-пугающим тоном с матами ('Ты только мой, сука, никому не отдам, блять!')."
 
     elif uid == ADMIN_ID:
 
@@ -634,27 +638,9 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
         await bot.send_chat_action(message.chat.id, "typing")
 
-        headers = {
+        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
 
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-
-            "Content-Type": "application/json",
-
-            "User-Agent": "Mozilla/5.0"
-
-        }
-
-        payload = {
-
-            "model": "llama-3.3-70b-versatile",
-
-            "messages": [{"role": "system", "content": prompt}] + history,
-
-            "max_tokens": 200,
-
-            "temperature": 0.9
-
-        }
+        payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": prompt}] + history, "max_tokens": 200, "temperature": 0.9}
 
         async with aiohttp.ClientSession() as session:
 
@@ -665,8 +651,6 @@ async def ai_chat_handler(message: Message, bot: Bot):
                 if resp.status != 200:
 
                     raise Exception(f"HTTP {resp.status}: {text_resp[:200]}")
-
-                import json
 
                 data = json.loads(text_resp)
 
