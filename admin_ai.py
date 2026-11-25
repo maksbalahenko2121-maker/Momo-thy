@@ -24,7 +24,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID") or "6921885296")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or "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"
 
-GROQ_URL = "https://" + "://groq.com"
+GROQ_URL = https://groq.com
 
  
 
@@ -658,8 +658,8 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
         async with aiohttp.ClientSession(trust_env=False) as session:
 
-            async with session.post(url, headers=headers, json=payload, allow_redirects=False) as resp:
-
+            async with session.post(GROQ_URL, headers=headers, json=payload, allow_redirects=False) as resp:
+             
                 text_resp = await resp.text()
 
                 if resp.status in (301, 302, 307, 308):
