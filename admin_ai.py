@@ -24,9 +24,17 @@ ADMIN_ID = int(os.getenv("ADMIN_ID") or "6921885296")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or "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"
 
+GROQ_URL = "https://" + "://groq.com"
+
  
 
 ai_cooldown, chat_memory = {}, {}
+
+ 
+
+def tg_link(uname: str, uid: int) -> str:
+
+    return ("https://t.me" + "/" + uname) if uname else f"tg://user?id={uid}"
 
  
 
@@ -184,9 +192,7 @@ async def adm_top25(call: CallbackQuery):
 
         cname = (fname or "Бака").replace("<", "").replace(">", "")
 
-        link = f"https://t.me{uname}" if uname else f"tg://user?id={uid}"
-
-        lines.append(f'{i}. <a href="{link}"><b>{cname}</b></a> — <code>{bal} BAKA</code> | {lvl} ур. | {refs} реф.')
+        lines.append(f'{i}. <a href="{tg_link(uname, uid)}"><b>{cname}</b></a> — <code>{bal} BAKA</code> | {lvl} ур. | {refs} реф.')
 
     await call.message.answer("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
@@ -212,11 +218,9 @@ async def adm_logs(call: CallbackQuery):
 
         cname = (fname or "Бака").replace("<", "").replace(">", "")
 
-        link = f"https://t.me{uname}" if uname else f"tg://user?id={uid}"
-
         r_str = f" (от <code>{ref}</code>)" if ref else ""
 
-        lines.append(f'🕒 <code>{dt}</code> — <a href="{link}"><b>{cname}</b></a> [<code>{uid}</code>]{r_str}')
+        lines.append(f'🕒 <code>{dt}</code> — <a href="{tg_link(uname, uid)}"><b>{cname}</b></a> [<code>{uid}</code>]{r_str}')
 
     await call.message.answer("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
@@ -242,13 +246,9 @@ async def adm_chats(call: CallbackQuery):
 
         ctitle = (title or "Чат").replace("<", "").replace(">", "")
 
-        if link:
+        if link: lines.append(f'∙ <a href="{link}"><b>{ctitle}</b></a> ({cnt} чел.) — [Перейти]')
 
-            lines.append(f'∙ <a href="{link}"><b>{ctitle}</b></a> ({cnt} чел.) — [Перейти]')
-
-        else:
-
-            lines.append(f'∙ <b>{ctitle}</b> ({cnt} чел.) — <i>закрытый без прав админа</i>')
+        else: lines.append(f'∙ <b>{ctitle}</b> ({cnt} чел.) — <i>закрытый без прав админа</i>')
 
     await call.message.answer("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
@@ -272,9 +272,7 @@ async def adm_raffle(call: CallbackQuery):
 
         cname = (fname or "Бака").replace("<", "").replace(">", "")
 
-        link = f"https://t.me{uname}" if uname else f"tg://user?id={uid}"
-
-        lines.append(f'{i}. <a href="{link}"><b>{cname}</b></a> — <b>{r_cnt} реф.</b>')
+        lines.append(f'{i}. <a href="{tg_link(uname, uid)}"><b>{cname}</b></a> — <b>{r_cnt} реф.</b>')
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
 
@@ -494,8 +492,6 @@ async def save_sub_channel(message: Message, state: FSMContext):
 
     await state.clear()
 
- 
-
 @router.callback_query(F.data.in_(["adm_bcast_pm", "adm_bcast_grp"]))
 
 async def adm_bcast_start(call: CallbackQuery, state: FSMContext):
@@ -580,7 +576,7 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
         if uid != ADMIN_ID and refs < 3 and msgs_today >= 15:
 
-            ref_url = f"https://t.me{me.username}?start={uid}"
+            ref_url = "https://t.me" + "/" + f"{me.username}?start={uid}"
 
             return await message.reply(f"*фыркнула* Лимит 15 сообщений на сегодня исчерпан, бака! 💢\nПригласи <b>3 друзей</b> (сейчас <b>{refs}/3</b>), чтобы общаться безлимитно:\n<code>{ref_url}</code>", parse_mode="HTML")
 
@@ -644,7 +640,7 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
         async with aiohttp.ClientSession() as session:
 
-            async with session.post("https://groq.com", headers=headers, json=payload) as resp:
+            async with session.post(GROQ_URL, headers=headers, json=payload) as resp:
 
                 text_resp = await resp.text()
 
