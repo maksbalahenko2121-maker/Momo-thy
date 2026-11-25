@@ -22,7 +22,7 @@ router = Router()
 
 ADMIN_ID = int(os.getenv("ADMIN_ID") or "6921885296")
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY") or "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"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") or "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"
 
  
 
