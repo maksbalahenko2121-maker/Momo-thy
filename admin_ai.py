@@ -634,19 +634,41 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
         await bot.send_chat_action(message.chat.id, "typing")
 
-        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+        headers = {
 
-        payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": prompt}] + history, "max_tokens": 200, "temperature": 0.9}
+            "Authorization": f"Bearer {GROQ_API_KEY}",
 
-        async with aiohttp.ClientSession() as session:
+            "Content-Type": "application/json"
 
-            async with session.post(GROQ_URL, headers=headers, json=payload) as resp:
+        }
+
+        payload = {
+
+            "model": "llama-3.3-70b-versatile",
+
+            "messages": [{"role": "system", "content": prompt}] + history,
+
+            "max_tokens": 200,
+
+            "temperature": 0.9
+
+        }
+
+        url = "https://groq.com"
+
+        async with aiohttp.ClientSession(trust_env=False) as session:
+
+            async with session.post(url, headers=headers, json=payload, allow_redirects=False) as resp:
 
                 text_resp = await resp.text()
 
+                if resp.status in (301, 302, 307, 308):
+
+                    raise Exception(f"Редирект {resp.status} на: {resp.headers.get('Location')}")
+
                 if resp.status != 200:
 
-                    raise Exception(f"HTTP {resp.status}: {text_resp[:200]}")
+                    raise Exception(f"HTTP {resp.status} | URL: {resp.url} | {text_resp[:150]}")
 
                 data = json.loads(text_resp)
 
