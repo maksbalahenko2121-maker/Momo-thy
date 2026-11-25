@@ -654,17 +654,13 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
         }
 
-        url = "https://groq.com"
+        api_url = "https://groq.com"
 
-        async with aiohttp.ClientSession(trust_env=False) as session:
+        async with aiohttp.ClientSession(trust_env=True) as session:
 
-            async with session.post(GROQ_URL, headers=headers, json=payload, allow_redirects=False) as resp:
-             
+            async with session.post(api_url, headers=headers, json=payload) as resp:
+
                 text_resp = await resp.text()
-
-                if resp.status in (301, 302, 307, 308):
-
-                    raise Exception(f"Редирект {resp.status} на: {resp.headers.get('Location')}")
 
                 if resp.status != 200:
 
@@ -682,4 +678,7 @@ async def ai_chat_handler(message: Message, bot: Bot):
 
     except Exception as e:
 
-        if is_priv and uid == ADMIN_ID: await message.answer(f"⚠️ Ошибка Groq: <code>{e}</code>", parse_mode="HTML")
+        if is_priv and uid == ADMIN_ID:
+
+            await message.answer(f"⚠️ Ошибка Groq: <code>{e}</code>", parse_mode="HTML")
+
